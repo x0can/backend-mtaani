@@ -31,6 +31,7 @@ router.post('/api/auth/register', async (req, res) => {
 
 router.post('/api/auth/login', async (req, res) => {
     try {
+        console.log(req.body);
         const { email, password } = req.body;
         if (!email || !password) return res.status(400).json({ message: 'Missing fields' });
 
@@ -136,6 +137,8 @@ router.post('/api/orders', authMiddleware, async (req, res) => {
             return { product: p._id, quantity: qty, priceAtPurchase: p.price };
         });
 
+        
+
         const order = await Order.create({
             user: req.user._id,
             items: orderItems,
@@ -160,24 +163,25 @@ router.post('/api/orders', authMiddleware, async (req, res) => {
 });
 
 router.get('/api/orders', authMiddleware, async (req, res) => {
-    try {
-        const query = req.user.isAdmin ? {} : { user: req.user._id };
+  try {
+    const query = req.user.isAdmin ? {} : { user: req.user._id }; // only user’s orders if not admin
 
-        const orders = await Order.find(query)
-            .populate('user', 'name email') // include user info
-            .populate({
-                path: 'items.product',
-                select: 'title price images category',
-                populate: { path: 'category', select: 'name' } // nested category
-            })
-            .sort('-createdAt');
+    const orders = await Order.find(query)
+      .populate('user', 'name email') // user info
+      .populate({
+        path: 'items.product',
+        select: 'title price images category',
+        populate: { path: 'category', select: 'name' }
+      })
+      .sort('-createdAt');
 
-        res.json(orders);
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: 'Failed to fetch orders', error: err.message });
-    }
+    res.json(orders);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Failed to fetch orders', error: err.message });
+  }
 });
+
 
 router.get('/api/orders/:id', authMiddleware, async (req, res) => {
     try {

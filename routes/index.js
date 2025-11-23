@@ -115,17 +115,17 @@ router.delete('/api/products/:id', authMiddleware, adminOnly, async (req, res) =
     if (!product) return res.status(404).json({ message: 'Product not found' });
     res.json({ message: 'Deleted' });
 });
-
 /* ---- Orders ---- */
 router.post('/api/orders', authMiddleware, async (req, res) => {
     try {
         const { items = [], shippingAddress = {} } = req.body;
         if (!items.length) return res.status(400).json({ message: 'No items' });
 
+        // Fetch products in the order
         const productIds = items.map(i => i.product);
         const products = await Product.find({ _id: { $in: productIds } });
         const prodMap = {};
-        products.forEach(p => prodMap[p._id] = p);
+        products.forEach(p => { prodMap[p._id] = p; });
 
         let total = 0;
         const orderItems = items.map(i => {
@@ -143,17 +143,63 @@ router.post('/api/orders', authMiddleware, async (req, res) => {
             shippingAddress,
         });
 
-        res.status(201).json(order);
+        // Populate user and product info before sending
+        const populatedOrder = await Order.findById(order._id)
+            .populate('user', 'name email') // user details
+            .populate({
+                path: 'items.product',
+                select: 'title price images category',
+                populate: { path: 'category', select: 'name' } // nested category
+            });
+
+        res.status(201).json(populatedOrder);
     } catch (err) {
+        console.error(err);
         res.status(400).json({ message: 'Order creation failed', error: err.message });
     }
 });
 
 router.get('/api/orders', authMiddleware, async (req, res) => {
-    const query = req.user.isAdmin ? {} : { user: req.user._id };
-    const orders = await Order.find(query).populate('items.product').sort('-createdAt');
-    res.json(orders);
+    try {
+        const query = req.user.isAdmin ? {} : { user: req.user._id };
+
+        const orders = await Order.find(query)
+            .populate('user', 'name email') // include user info
+            .populate({
+                path: 'items.product',
+                select: 'title price images category',
+                populate: { path: 'category', select: 'name' } // nested category
+            })
+            .sort('-createdAt');
+
+        res.json(orders);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Failed to fetch orders', error: err.message });
+    }
 });
+
+router.get('/api/orders/:id', authMiddleware, async (req, res) => {
+    try {
+        const order = await Order.findById(req.params.id)
+            .populate('user', 'name email')
+            .populate({
+                path: 'items.product',
+                select: 'title price images category',
+                populate: { path: 'category', select: 'name' }
+            });
+
+        if (!order) return res.status(404).json({ message: 'Order not found' });
+        if (!req.user.isAdmin && String(order.user._id) !== String(req.user._id)) 
+            return res.status(403).json({ message: 'Forbidden' });
+
+        res.json(order);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Failed to fetch order', error: err.message });
+    }
+});
+
 
 /* ---- Categories (Admin) ---- */
 router.get('/api/categories', async (req, res) => {

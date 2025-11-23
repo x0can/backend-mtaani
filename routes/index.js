@@ -10,14 +10,14 @@ router.get('/health', (req, res) => res.json({ status: 'ok' }));
 /* ---- Auth ---- */
 router.post('/api/auth/register', async (req, res) => {
     try {
-        const { name, email, password, isAdmin } = req.body;
-        if (!name || !email || !password) return res.status(400).json({ message: 'Missing fields' });
+        const { name, email, password, isAdmin,phone } = req.body;
+        if (!name || !email || !password || !phone) return res.status(400).json({ message: 'Missing fields' });
 
         const exists = await User.findOne({ email });
         if (exists) return res.status(400).json({ message: 'Email already in use' });
 
         const passwordHash = await hashPassword(password);
-        const user = await User.create({ name, email, passwordHash, isAdmin });
+        const user = await User.create({ name, email, passwordHash, isAdmin, phone });
 
         const token = generateToken(user);
         res.status(201).json({
@@ -167,7 +167,7 @@ router.get('/api/orders', authMiddleware, async (req, res) => {
     const query = req.user.isAdmin ? {} : { user: req.user._id }; // only user’s orders if not admin
 
     const orders = await Order.find(query)
-      .populate('user', 'name email') // user info
+      .populate('user', 'name email phone') // user info
       .populate({
         path: 'items.product',
         select: 'title price images category',
@@ -201,6 +201,46 @@ router.get('/api/orders/:id', authMiddleware, async (req, res) => {
     } catch (err) {
         console.error(err);
         res.status(500).json({ message: 'Failed to fetch order', error: err.message });
+    }
+});
+
+
+/* ---- Update Order Status ---- */
+router.put('/api/orders/:id', authMiddleware, async (req, res) => {
+    try {
+        const { status } = req.body;
+        if (!status) return res.status(400).json({ message: 'Status is required' });
+
+        // Validate status value
+        const validStatuses = ["created", "paid", "shipped", "completed", "cancelled"];
+        if (!validStatuses.includes(status)) {
+            return res.status(400).json({ message: 'Invalid status value' });
+        }
+
+        const order = await Order.findById(req.params.id);
+        if (!order) return res.status(404).json({ message: 'Order not found' });
+
+        // Only admin or owner can update
+        if (!req.user.isAdmin && String(order.user) !== String(req.user._id)) {
+            return res.status(403).json({ message: 'Forbidden' });
+        }
+
+        // Update the status
+        order.status = status;
+        await order.save();
+
+        const populatedOrder = await Order.findById(order._id)
+            .populate('user', 'name email')
+            .populate({
+                path: 'items.product',
+                select: 'title price images category',
+                populate: { path: 'category', select: 'name' }
+            });
+
+        res.json(populatedOrder);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Failed to update order', error: err.message });
     }
 });
 

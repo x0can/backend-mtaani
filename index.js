@@ -27,7 +27,7 @@ app.use(cors())
 
 /* ---- Config ---- */
 const PORT = process.env.PORT || 3000;
-const MONGO_URI =  'mongodb+srv://alexmwaura43_db_user:waveLike8ese@cluster0.qxj0sye.mongodb.net/?appName=Cluster0';
+const MONGO_URI =  'mongodb+srv://alexmwaura43:waveLike8ese@cluster0.w1akjr0.mongodb.net/';
 
 
 /* ---- DB Connection ---- */

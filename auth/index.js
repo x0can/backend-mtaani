@@ -39,9 +39,20 @@ function adminOnly(req, res, next) {
     next();
 }
 
+function requireRole(role) {
+  return (req, res, next) => {
+    if (!req.user || req.user.role !== role) {
+      return res.status(403).json({ message: `Forbidden - ${role} only` });
+    }
+    next();
+  };
+}
+
 module.exports = {
-    generateToken,
-    hashPassword,
-    authMiddleware,
-    adminOnly
+  generateToken,
+  hashPassword,
+  authMiddleware,
+  adminOnly,
+  requireRole, // NEW
 };
+

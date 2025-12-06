@@ -114,6 +114,8 @@ router.post("/api/auth/login", async (req, res) => {
       return res.status(400).json({ message: "Invalid credentials" });
 
     const token = generateToken(user);
+
+    console.log(user)
     res.json({
       token,
       user,
@@ -193,6 +195,89 @@ router.patch(
     res.json({ success: true, user });
   }
 );
+
+/***********************************************************************
+ *  ADMIN — USER MANAGEMENT (NEW ROUTES ADDED FOR SHOPIFY UI)
+ ***********************************************************************/
+
+// UNVERIFY USER
+router.patch(
+  "/api/admin/users/:id/unverify",
+  authMiddleware,
+  adminOnly,
+  async (req, res) => {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    user.verified = false;
+    await user.save();
+
+    res.json({ success: true, user });
+  }
+);
+
+// MAKE CUSTOMER (Reverse of promote-rider)
+router.patch(
+  "/api/admin/users/:id/make-customer",
+  authMiddleware,
+  adminOnly,
+  async (req, res) => {
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    user.role = "customer";
+    await user.save();
+
+    res.json({ success: true, user });
+  }
+);
+
+// DELETE USER
+router.delete(
+  "/api/admin/users/:id",
+  authMiddleware,
+  adminOnly,
+  async (req, res) => {
+    const user = await User.findByIdAndDelete(req.params.id);
+
+    if (!user)
+      return res.status(404).json({ message: "User not found" });
+
+    res.json({ success: true, message: "User deleted" });
+  }
+);
+
+// UPDATE USER (Admin edit: name, email, phone, role, verified, active)
+router.put(
+  "/api/admin/users/:id",
+  authMiddleware,
+  adminOnly,
+  async (req, res) => {
+    try {
+      const allowed = ["name", "email", "phone", "role", "verified", "active"];
+      const updates = {};
+
+      allowed.forEach((key) => {
+        if (typeof req.body[key] !== "undefined") {
+          updates[key] = req.body[key];
+        }
+      });
+
+      const user = await User.findByIdAndUpdate(req.params.id, updates, {
+        new: true,
+      }).select("-passwordHash");
+
+      if (!user)
+        return res.status(404).json({ message: "User not found" });
+
+      res.json({ success: true, user });
+    } catch (err) {
+      console.error("Update user failed:", err);
+      res.status(500).json({ message: "Update failed" });
+    }
+  }
+);
+
 
 /***********************************************************************
  *  CATEGORIES

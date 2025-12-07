@@ -1,0 +1,59 @@
+// services/presenceService.js
+const { User } = require("../db");
+
+const PRESENCE_TIMEOUT_MS = parseInt(
+  process.env.PRESENCE_TIMEOUT_MS || "30000",
+  10
+); // 30s default
+
+const PRESENCE_SWEEP_INTERVAL_MS = parseInt(
+  process.env.PRESENCE_SWEEP_INTERVAL_MS || "15000",
+  10
+); // check every 15s
+
+function startPresenceMonitor(io) {
+  console.log("⚡ Presence monitor started...");
+
+  setInterval(async () => {
+    try {
+      const cutoff = new Date(Date.now() - PRESENCE_TIMEOUT_MS);
+
+      // Riders who should now be offline
+      const staleRiders = await User.find({
+        role: "rider",
+        isOnline: true,
+        $or: [
+          { lastHeartbeat: { $lt: cutoff } },
+          { lastHeartbeat: null }, // never sent heartbeat
+        ],
+      }).select("_id");
+
+      if (!staleRiders.length) return;
+
+      const ids = staleRiders.map((u) => u._id);
+
+      // Update DB
+      await User.updateMany(
+        { _id: { $in: ids } },
+        {
+          isOnline: false,
+          lastSeen: new Date(),
+        }
+      );
+
+      // Emit offline events individually
+      ids.forEach((id) => {
+        io.emit("rider:offline", {
+          riderId: id,
+          lastSeen: new Date().toISOString(),
+        });
+      });
+
+      console.log(`🔻 Presence: Marked ${ids.length} rider(s) offline.`);
+    } catch (err) {
+      console.error("Presence monitor error:", err);
+    }
+  }, PRESENCE_SWEEP_INTERVAL_MS);
+}
+
+module.exports = { startPresenceMonitor };

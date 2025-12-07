@@ -19,12 +19,13 @@ const {
   adminOnly,
 } = require("./auth");
 
+const { allowRoles } = require("./utils/roles");
 /***********************************************************************
  *  CLOUDINARY UPLOAD (MULTER)
  ***********************************************************************/
 const cloudinary = require("./cloudinary");
 
-const tempDir = path.join(__dirname, "..", "temp");
+const tempDir = path.join(__dirname, "../db", "temp");
 if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir);
 
 const upload = multer({
@@ -110,12 +111,11 @@ router.post("/api/auth/login", async (req, res) => {
     if (!user) return res.status(400).json({ message: "Invalid credentials" });
 
     const match = await bcrypt.compare(password, user.passwordHash);
-    if (!match)
-      return res.status(400).json({ message: "Invalid credentials" });
+    if (!match) return res.status(400).json({ message: "Invalid credentials" });
 
     const token = generateToken(user);
 
-    console.log(user)
+    console.log(user);
     res.json({
       token,
       user,
@@ -240,8 +240,7 @@ router.delete(
   async (req, res) => {
     const user = await User.findByIdAndDelete(req.params.id);
 
-    if (!user)
-      return res.status(404).json({ message: "User not found" });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
     res.json({ success: true, message: "User deleted" });
   }
@@ -267,8 +266,7 @@ router.put(
         new: true,
       }).select("-passwordHash");
 
-      if (!user)
-        return res.status(404).json({ message: "User not found" });
+      if (!user) return res.status(404).json({ message: "User not found" });
 
       res.json({ success: true, user });
     } catch (err) {
@@ -278,7 +276,6 @@ router.put(
   }
 );
 
-
 /***********************************************************************
  *  CATEGORIES
  ***********************************************************************/
@@ -287,20 +284,15 @@ router.get("/api/categories", async (req, res) => {
   res.json(categories);
 });
 
-router.post(
-  "/api/categories",
-  authMiddleware,
-  adminOnly,
-  async (req, res) => {
-    try {
-      const category = await ProductCategory.create(req.body);
-      res.status(201).json(category);
-    } catch (err) {
-      console.error("Create category failed:", err);
-      res.status(400).json({ message: "Invalid category data" });
-    }
+router.post("/api/categories", authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const category = await ProductCategory.create(req.body);
+    res.status(201).json(category);
+  } catch (err) {
+    console.error("Create category failed:", err);
+    res.status(400).json({ message: "Invalid category data" });
   }
-);
+});
 
 router.put(
   "/api/categories/:id",
@@ -355,35 +347,24 @@ router.get("/api/products", async (req, res) => {
   }
 });
 
-router.post(
-  "/api/products",
-  authMiddleware,
-  adminOnly,
-  async (req, res) => {
-    try {
-      const product = await Product.create(req.body);
-      res.status(201).json(product);
-    } catch (err) {
-      console.error("Create product failed:", err);
-      res.status(400).json({ message: "Invalid product data" });
-    }
+router.post("/api/products", authMiddleware, adminOnly, async (req, res) => {
+  try {
+    const product = await Product.create(req.body);
+    res.status(201).json(product);
+  } catch (err) {
+    console.error("Create product failed:", err);
+    res.status(400).json({ message: "Invalid product data" });
   }
-);
+});
 
-router.put(
-  "/api/products/:id",
-  authMiddleware,
-  adminOnly,
-  async (req, res) => {
-    const product = await Product.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-    });
-    if (!product)
-      return res.status(404).json({ message: "Product not found" });
+router.put("/api/products/:id", authMiddleware, adminOnly, async (req, res) => {
+  const product = await Product.findByIdAndUpdate(req.params.id, req.body, {
+    new: true,
+  });
+  if (!product) return res.status(404).json({ message: "Product not found" });
 
-    res.json(product);
-  }
-);
+  res.json(product);
+});
 
 router.delete(
   "/api/products/:id",
@@ -391,8 +372,7 @@ router.delete(
   adminOnly,
   async (req, res) => {
     const product = await Product.findByIdAndDelete(req.params.id);
-    if (!product)
-      return res.status(404).json({ message: "Product not found" });
+    if (!product) return res.status(404).json({ message: "Product not found" });
 
     res.json({ message: "Deleted" });
   }
@@ -425,8 +405,7 @@ router.get("/api/products/:id", async (req, res) => {
 router.post("/api/orders", authMiddleware, async (req, res) => {
   try {
     const { items = [], shippingAddress = {} } = req.body;
-    if (!items.length)
-      return res.status(400).json({ message: "No items" });
+    if (!items.length) return res.status(400).json({ message: "No items" });
 
     const productIds = items.map((i) => i.product);
     const prods = await Product.find({ _id: { $in: productIds } });
@@ -499,8 +478,7 @@ router.get("/api/orders/:id", authMiddleware, async (req, res) => {
         populate: { path: "category" },
       });
 
-    if (!order)
-      return res.status(404).json({ message: "Order not found" });
+    if (!order) return res.status(404).json({ message: "Order not found" });
 
     const isAdmin = req.user.isAdmin;
     const isOwner = String(order.user._id) === String(req.user._id);
@@ -527,8 +505,7 @@ router.put("/api/orders/:id", authMiddleware, async (req, res) => {
     const { status, rider: riderIdFromBody } = req.body;
     const order = await Order.findById(req.params.id);
 
-    if (!order)
-      return res.status(404).json({ message: "Order not found" });
+    if (!order) return res.status(404).json({ message: "Order not found" });
 
     const validStatuses = [
       "created",
@@ -840,7 +817,9 @@ router.post(
 
       // Track assignment on rider doc
       rider.assignedOrders = rider.assignedOrders || [];
-      if (!rider.assignedOrders.find((id) => String(id) === String(order._id))) {
+      if (
+        !rider.assignedOrders.find((id) => String(id) === String(order._id))
+      ) {
         rider.assignedOrders.push(order._id);
       }
       await rider.save();
@@ -916,13 +895,9 @@ router.post(
 
     try {
       const order = await Order.findById(orderId);
-      if (!order)
-        return res.status(404).json({ message: "Order not found" });
+      if (!order) return res.status(404).json({ message: "Order not found" });
 
-      if (
-        String(order.rider) !== String(req.user._id) &&
-        !req.user.isAdmin
-      ) {
+      if (String(order.rider) !== String(req.user._id) && !req.user.isAdmin) {
         return res.status(403).json({ message: "Not assigned to you" });
       }
 
@@ -954,13 +929,9 @@ router.post(
 
     try {
       const order = await Order.findById(orderId);
-      if (!order)
-        return res.status(404).json({ message: "Order not found" });
+      if (!order) return res.status(404).json({ message: "Order not found" });
 
-      if (
-        String(order.rider) !== String(req.user._id) &&
-        !req.user.isAdmin
-      ) {
+      if (String(order.rider) !== String(req.user._id) && !req.user.isAdmin) {
         return res.status(403).json({ message: "Not assigned to you" });
       }
 
@@ -984,27 +955,71 @@ router.post(
 );
 
 /***********************************************************************
- *  RIDER ONLINE / OFFLINE
+ *  USER ONLINE / OFFLINE
  ***********************************************************************/
-router.post("/api/rider/online", authMiddleware, async (req, res) => {
-  if (req.user.role !== "rider" && !req.user.isAdmin)
-    return res.status(403).json({ message: "Forbidden" });
 
-  req.user.isOnline = true;
-  await req.user.save();
+// Mark any allowed user ONLINE
+router.post(
+  "/api/user/online",
+  authMiddleware,
+  allowRoles("rider", "customer", "admin"), // which roles can go online?
+  async (req, res) => {
+    req.user.isOnline = true;
+    await req.user.save();
 
-  res.json({ success: true });
-});
+    res.json({ success: true, message: `${req.user.role} is now online` });
+  }
+);
 
-router.post("/api/rider/offline", authMiddleware, async (req, res) => {
-  if (req.user.role !== "rider" && !req.user.isAdmin)
-    return res.status(403).json({ message: "Forbidden" });
+// Mark any allowed user OFFLINE
+router.post(
+  "/api/user/offline",
+  authMiddleware,
+  allowRoles("rider", "customer", "admin"), // same or different roles—your call
+  async (req, res) => {
+    req.user.isOnline = false;
+    await req.user.save();
 
-  req.user.isOnline = false;
-  await req.user.save();
+    res.json({ success: true, message: `${req.user.role} is now offline` });
+  }
+);
 
-  res.json({ success: true });
-});
+/***********************************************************************
+ *  ADMIN — SET RIDER ONLINE/OFFLINE
+ ***********************************************************************/
+router.patch(
+  "/api/admin/rider/:id/online",
+  authMiddleware,
+  adminOnly,
+  async (req, res) => {
+    const rider = await User.findById(req.params.id);
+
+    if (!rider || rider.role !== "rider")
+      return res.status(404).json({ message: "Rider not found" });
+
+    rider.isOnline = true;
+    await rider.save();
+
+    res.json({ success: true, rider });
+  }
+);
+
+router.patch(
+  "/api/admin/rider/:id/offline",
+  authMiddleware,
+  adminOnly,
+  async (req, res) => {
+    const rider = await User.findById(req.params.id);
+
+    if (!rider || rider.role !== "rider")
+      return res.status(404).json({ message: "Rider not found" });
+
+    rider.isOnline = false;
+    await rider.save();
+
+    res.json({ success: true, rider });
+  }
+);
 
 /***********************************************************************
  *  ADMIN — ANALYTICS & REPORTING

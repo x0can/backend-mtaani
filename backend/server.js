@@ -88,11 +88,14 @@ const io = new Server(server, {
   },
 });
 
-// Attach socket to express requests
+// Make io available in routes via req.io AND req.app.get('io')
+app.set("io", io);
+
 app.use((req, res, next) => {
   req.io = io;
   next();
 });
+
 
 /* ---------------------------------------------------
    SOCKET.IO EVENTS

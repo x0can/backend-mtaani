@@ -1,4 +1,3 @@
-// routes/presenceRoutes.js
 const express = require("express");
 const router = express.Router();
 
@@ -13,21 +12,40 @@ router.post(
   authMiddleware,
   allowRoles("rider", "customer", "admin"),
   async (req, res) => {
-    req.user.isOnline = true;
-    req.user.lastHeartbeat = new Date();
-    req.user.lastSeen = new Date();
-    await req.user.save();
+    try {
+      req.user.isOnline = true;
+      req.user.lastHeartbeat = new Date();
+      req.user.lastSeen = new Date();
+      await req.user.save();
 
-    res.json({ success: true, message: `${req.user.role} online` });
+      // Emit for riders so admins can see live presence
+      const io = req.app.get("io");
+      if (io && req.user.role === "rider") {
+        io.emit("rider:online", {
+          riderId: req.user._id,
+          lastSeen: req.user.lastSeen,
+        });
+      }
+
+      res.json({ success: true, message: `${req.user.role} online` });
+    } catch (err) {
+      console.error("Presence online error:", err);
+      res.status(500).json({ message: "Server error" });
+    }
   }
 );
 
 router.post("/api/user/heartbeat", authMiddleware, async (req, res) => {
-  req.user.lastHeartbeat = new Date();
-  req.user.isOnline = true;
-  await req.user.save();
+  try {
+    req.user.lastHeartbeat = new Date();
+    req.user.isOnline = true;
+    await req.user.save();
 
-  res.json({ success: true });
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Heartbeat error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
 });
 
 router.post(
@@ -35,11 +53,24 @@ router.post(
   authMiddleware,
   allowRoles("rider", "customer", "admin"),
   async (req, res) => {
-    req.user.isOnline = false;
-    req.user.lastSeen = new Date();
-    await req.user.save();
+    try {
+      req.user.isOnline = false;
+      req.user.lastSeen = new Date();
+      await req.user.save();
 
-    res.json({ success: true, message: "User offline" });
+      const io = req.app.get("io");
+      if (io && req.user.role === "rider") {
+        io.emit("rider:offline", {
+          riderId: req.user._id,
+          lastSeen: req.user.lastSeen,
+        });
+      }
+
+      res.json({ success: true, message: "User offline" });
+    } catch (err) {
+      console.error("Presence offline error:", err);
+      res.status(500).json({ message: "Server error" });
+    }
   }
 );
 
@@ -57,7 +88,11 @@ router.patch(
       return res.status(404).json({ message: "Rider not found" });
 
     rider.isOnline = true;
+    rider.lastSeen = new Date();
     await rider.save();
+
+    const io = req.app.get("io");
+    io?.emit("rider:online", { riderId: rider._id, lastSeen: rider.lastSeen });
 
     res.json({ success: true, rider });
   }
@@ -74,7 +109,11 @@ router.patch(
       return res.status(404).json({ message: "Rider not found" });
 
     rider.isOnline = false;
+    rider.lastSeen = new Date();
     await rider.save();
+
+    const io = req.app.get("io");
+    io?.emit("rider:offline", { riderId: rider._id, lastSeen: rider.lastSeen });
 
     res.json({ success: true, rider });
   }

@@ -119,51 +119,5 @@ router.get("/api/user/status", authMiddleware, async (req, res) => {
   }
 });
 
-router.post("/api/user/online", authMiddleware, async (req, res) => {
-  try {
-    const user = await User.findByIdAndUpdate(
-      req.user._id,
-      {
-        isOnline: true,
-        lastSeen: new Date(),
-        lastHeartbeat: new Date(),
-      },
-      { new: true }
-    );
-
-    // Emit socket event
-    const io = req.app.get("io");
-    io?.emit("rider:online", { riderId: user._id });
-
-    res.json({ success: true, isOnline: true });
-  } catch (err) {
-    console.error("Online error:", err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-
-router.post("/api/user/offline", authMiddleware, async (req, res) => {
-  try {
-    const user = await User.findByIdAndUpdate(
-      req.user._id,
-      {
-        isOnline: false,
-        lastSeen: new Date(),
-      },
-      { new: true }
-    );
-
-    const io = req.app.get("io");
-    io?.emit("rider:offline", {
-      riderId: user._id,
-      lastSeen: user.lastSeen,
-    });
-
-    res.json({ success: true, isOnline: false });
-  } catch (err) {
-    console.error("Offline error:", err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
 
 module.exports = router;

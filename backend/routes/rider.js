@@ -60,10 +60,13 @@ router.post("/api/rider/location", authMiddleware, async (req, res) => {
 
     const rider = await User.findById(req.user._id);
     rider.currentLocation = { lat, lng };
+    rider.lastSeen = new Date();
     await rider.save();
 
-    if (req.io) {
-      req.io.emit("rider:location", {
+    const io = req.io || req.app.get("io");
+
+    if (io) {
+      io.emit("rider:location", {
         riderId: rider._id,
         name: rider.name,
         lat,
@@ -71,7 +74,7 @@ router.post("/api/rider/location", authMiddleware, async (req, res) => {
       });
 
       if (orderId) {
-        req.io.to(`order:${orderId}`).emit("order:rider-location", {
+        io.to(`order:${orderId}`).emit("order:rider-location", {
           orderId,
           lat,
           lng,
@@ -85,6 +88,7 @@ router.post("/api/rider/location", authMiddleware, async (req, res) => {
     res.status(500).json({ message: "Location update failed" });
   }
 });
+
 
 /**
  * Admin: riders + their orders

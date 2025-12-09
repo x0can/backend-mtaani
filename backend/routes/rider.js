@@ -5,14 +5,14 @@ const router = express.Router();
 const { User, Order } = require("../db");
 const { authMiddleware, adminOnly } = require("../auth");
 
-
-
-
-// GET /api/admin/riders/live
+/**
+ * Admin: live riders (basic)
+ */
 router.get("/riders/live", adminOnly, async (req, res) => {
   try {
-    const riders = await User.find({ role: "rider" })
-      .select("name phone isOnline lastSeen lastHeartbeat currentLocation assignedOrders");
+    const riders = await User.find({ role: "rider" }).select(
+      "name phone isOnline lastSeen lastHeartbeat currentLocation assignedOrders"
+    );
 
     res.json({ success: true, riders });
   } catch (err) {
@@ -20,8 +20,6 @@ router.get("/riders/live", adminOnly, async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
-
-
 
 /***********************************************************************
  *  RIDER: ROUTE PLAN (OPTIONAL)
@@ -88,7 +86,6 @@ router.post("/api/rider/location", authMiddleware, async (req, res) => {
     res.status(500).json({ message: "Location update failed" });
   }
 });
-
 
 /**
  * Admin: riders + their orders
@@ -213,5 +210,49 @@ router.post(
     }
   }
 );
+
+/***********************************************************************
+ *  CUSTOMER: LIVE LOCATION UPDATE (HTTP FALLBACK)
+ ***********************************************************************/
+router.post("/api/customer/location", authMiddleware, async (req, res) => {
+  try {
+    const { lat, lng, orderId } = req.body;
+
+    if (typeof lat !== "number" || typeof lng !== "number")
+      return res.status(400).json({ message: "Invalid coordinates" });
+
+    const customer = await User.findById(req.user._id);
+    customer.currentLocation = { lat, lng };
+    customer.lastSeen = new Date();
+    await customer.save();
+
+    const io = req.io || req.app.get("io");
+    if (io) {
+      io.emit("customer:online", {
+        userId: customer._id,
+        lastSeen: new Date(),
+      });
+
+      io.emit("customer:location", {
+        userId: customer._id,
+        lat,
+        lng,
+      });
+
+      if (orderId) {
+        io.to(`order:${orderId}`).emit("order:customer-location", {
+          orderId,
+          lat,
+          lng,
+        });
+      }
+    }
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Customer location update error:", err);
+    res.status(500).json({ message: "Failed" });
+  }
+});
 
 module.exports = router;

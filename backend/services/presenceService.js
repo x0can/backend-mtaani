@@ -24,7 +24,7 @@ function startPresenceMonitor(io) {
         isOnline: true,
         $or: [
           { lastHeartbeat: { $lt: cutoff } },
-          { lastHeartbeat: null }, // never sent heartbeat
+          { lastHeartbeat: null },
         ],
       }).select("_id");
 
@@ -32,7 +32,6 @@ function startPresenceMonitor(io) {
 
       const ids = staleRiders.map((u) => u._id);
 
-      // Update DB
       await User.updateMany(
         { _id: { $in: ids } },
         {
@@ -41,7 +40,6 @@ function startPresenceMonitor(io) {
         }
       );
 
-      // Emit offline events individually
       ids.forEach((id) => {
         io.emit("rider:offline", {
           riderId: id,

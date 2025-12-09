@@ -61,20 +61,6 @@ app.get("/health", (req, res) => {
 });
 
 /* ---------------------------------------------------
-   DB CONNECTION
---------------------------------------------------- */
-mongoose
-  .connect(MONGO_URI)
-  .then(() => {
-    console.log("✅ MongoDB connected");
-    startPresenceMonitor();
-  })
-  .catch((err) => {
-    console.error("❌ MongoDB connection error", err);
-    process.exit(1);
-  });
-
-/* ---------------------------------------------------
    HTTP SERVER + SOCKET.IO
 --------------------------------------------------- */
 const server = http.createServer(app);
@@ -96,12 +82,83 @@ app.use((req, res, next) => {
   next();
 });
 
+/* ---------------------------------------------------
+   DB CONNECTION
+--------------------------------------------------- */
+mongoose
+  .connect(MONGO_URI)
+  .then(() => {
+    console.log("✅ MongoDB connected");
+    // pass io so presenceService can emit offline events
+    startPresenceMonitor(io);
+  })
+  .catch((err) => {
+    console.error("❌ MongoDB connection error", err);
+    process.exit(1);
+  });
 
 /* ---------------------------------------------------
    SOCKET.IO EVENTS
 --------------------------------------------------- */
 io.on("connection", (socket) => {
   console.log("🔌 socket connected:", socket.id);
+
+  /* ---------------------------
+     🟢 CUSTOMER ONLINE
+  -----------------------------*/
+  socket.on("customer:online", async ({ userId }) => {
+    if (!userId) return;
+
+    await User.findByIdAndUpdate(userId, {
+      isOnline: true,
+      lastSeen: new Date(),
+      lastHeartbeat: new Date(),
+    });
+
+    io.emit("customer:online", {
+      userId,
+      lastSeen: new Date(),
+    });
+
+    console.log("🟢 Customer ONLINE:", userId);
+  });
+
+  /* ---------------------------
+     📍 CUSTOMER LIVE LOCATION
+  -----------------------------*/
+  socket.on("customer:location", async ({ userId, coords }) => {
+    if (!userId || !coords) return;
+
+    await User.findByIdAndUpdate(userId, {
+      currentLocation: coords,
+      lastSeen: new Date(),
+    });
+
+    io.emit("customer:location", {
+      userId,
+      lat: coords.lat,
+      lng: coords.lng,
+    });
+
+    console.log("📍 Customer location:", userId, coords.lat, coords.lng);
+  });
+
+  /* ---------------------------
+     ❤️ CUSTOMER HEARTBEAT
+  -----------------------------*/
+  socket.on("customer:heartbeat", async ({ userId }) => {
+    if (!userId) return;
+
+    await User.findByIdAndUpdate(userId, {
+      isOnline: true,
+      lastHeartbeat: new Date(),
+    });
+
+    io.emit("customer:heartbeat", {
+      userId,
+      lastSeen: new Date(),
+    });
+  });
 
   /* ---------------------------
        🟢 RIDER ONLINE
@@ -156,7 +213,6 @@ io.on("connection", (socket) => {
       lastSeen: new Date(),
     });
 
-    // IMPORTANT FIX → Emit riderId, not userId
     io.emit("rider:location", {
       riderId: userId,
       lat,

@@ -35,14 +35,18 @@ router.post("/api/auth/register", async (req, res) => {
 
     const token = generateToken(user);
 
-    res.status(201).json({
+    const fullUser = await User.findById(user._id).select("-passwordHash");
+
+    res.json({
       token,
       user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        verified: user.verified,
+        id: fullUser._id,
+        name: fullUser.name,
+        email: fullUser.email,
+        phone: fullUser.phone,
+        role: fullUser.role,
+        verified: fullUser.verified,
+        image: fullUser.image || null, // ⭐ IMPORTANT
       },
     });
   } catch (err) {
@@ -59,21 +63,26 @@ router.post("/api/auth/login", async (req, res) => {
       return res.status(400).json({ message: "Missing fields" });
 
     const user = await User.findOne({ email });
-    if (!user)
-      return res.status(400).json({ message: "Invalid credentials" });
+    if (!user) return res.status(400).json({ message: "Invalid credentials" });
 
     const match = await bcrypt.compare(password, user.passwordHash);
-    if (!match)
-      return res.status(400).json({ message: "Invalid credentials" });
+    if (!match) return res.status(400).json({ message: "Invalid credentials" });
 
     const token = generateToken(user);
 
-    const safeUser = user.toObject();
-    delete safeUser.passwordHash;
+    const fullUser = await User.findById(user._id).select("-passwordHash");
 
     res.json({
       token,
-      user: safeUser,
+      user: {
+        id: fullUser._id,
+        name: fullUser.name,
+        email: fullUser.email,
+        phone: fullUser.phone,
+        role: fullUser.role,
+        verified: fullUser.verified,
+        image: fullUser.image || null, // ⭐ IMPORTANT
+      },
     });
   } catch (err) {
     console.error("Login failed:", err);
@@ -84,9 +93,19 @@ router.post("/api/auth/login", async (req, res) => {
 /***********************************************************************
  *  USER PROFILE
  ***********************************************************************/
-router.get("/api/me", authMiddleware, (req, res) => {
-  res.json(req.user);
+router.get("/api/me", authMiddleware, async (req, res) => {
+  const fullUser = await User.findById(req.user._id).select("-passwordHash");
+  res.json({
+    id: fullUser._id,
+    name: fullUser.name,
+    email: fullUser.email,
+    phone: fullUser.phone,
+    role: fullUser.role,
+    verified: fullUser.verified,
+    image: fullUser.image || null, // ⭐ CRITICAL
+  });
 });
+
 
 router.put("/api/me", authMiddleware, async (req, res) => {
   try {

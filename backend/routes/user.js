@@ -13,6 +13,27 @@ router.get("/api/admin/users", authMiddleware, adminOnly, async (req, res) => {
   res.json(users);
 });
 
+router.put("/api/user/profile-image", authMiddleware, async (req, res) => {
+  try {
+    const { image } = req.body;
+
+    if (!image) {
+      return res.status(400).json({ message: "Image URL is required" });
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(
+      req.user._id,
+      { image },
+      { new: true }
+    );
+
+    res.json(updatedUser);
+  } catch (err) {
+    console.error("Profile image update error:", err);
+    res.status(500).json({ message: "Failed to update profile image" });
+  }
+});
+
 // VERIFY USER
 router.patch(
   "/api/admin/users/:id/verify",
@@ -200,6 +221,5 @@ router.get(
     }
   }
 );
-
 
 module.exports = router;

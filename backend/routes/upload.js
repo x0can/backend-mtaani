@@ -19,7 +19,6 @@ const upload = multer({
 router.post(
   "/api/upload",
   authMiddleware,
-  adminOnly,
   upload.single("image"),
   async (req, res) => {
     try {

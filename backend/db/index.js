@@ -10,6 +10,9 @@ const UserSchema = new mongoose.Schema(
     isAdmin: { type: Boolean, default: false },
     phone: { type: String, required: true },
 
+    // ⭐ ADD THIS
+    image: { type: String, default: null },
+
     role: {
       type: String,
       enum: ["customer", "rider"],
@@ -31,17 +34,16 @@ const UserSchema = new mongoose.Schema(
       lng: { type: Number, default: 0 },
     },
 
-    // rider route plan (optional)
     routePlan: {
       start: { type: mongoose.Schema.Types.Mixed, default: null },
       end: { type: mongoose.Schema.Types.Mixed, default: null },
     },
 
-    // rider assignments
     assignedOrders: [{ type: mongoose.Schema.Types.ObjectId, ref: "Order" }],
   },
   { timestamps: true }
 );
+
 
 /* ---- Product & Category ---- */
 const ProductCategorySchema = new mongoose.Schema(
@@ -87,13 +89,17 @@ const OrderSchema = new mongoose.Schema(
     user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     items: [OrderItemSchema],
     total: { type: Number, required: true },
+
     status: {
       type: String,
       enum: ["created", "paid", "shipped", "completed", "cancelled"],
       default: "created",
     },
+
+    paymentInfo: mongoose.Schema.Types.Mixed, // ⭐ ADD THIS
+
     shippingAddress: mongoose.Schema.Types.Mixed,
-    rider: { type: mongoose.Schema.Types.ObjectId, ref: "User" }, // assigned rider
+    rider: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     riderLocation: {
       lat: { type: Number, default: 0 },
       lng: { type: Number, default: 0 },
@@ -106,7 +112,10 @@ const OrderSchema = new mongoose.Schema(
 const User = mongoose.model("User", UserSchema);
 const Product = mongoose.model("Product", ProductSchema);
 const Order = mongoose.model("Order", OrderSchema);
-const ProductCategory = mongoose.model("ProductCategory", ProductCategorySchema);
+const ProductCategory = mongoose.model(
+  "ProductCategory",
+  ProductCategorySchema
+);
 
 module.exports = {
   User,

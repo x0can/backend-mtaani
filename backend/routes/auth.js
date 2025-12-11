@@ -40,7 +40,7 @@ router.post("/api/auth/register", async (req, res) => {
     res.json({
       token,
       user: {
-        id: fullUser._id,
+        _id: fullUser._id,
         name: fullUser.name,
         email: fullUser.email,
         phone: fullUser.phone,
@@ -75,7 +75,7 @@ router.post("/api/auth/login", async (req, res) => {
     res.json({
       token,
       user: {
-        id: fullUser._id,
+        _id: fullUser._id,
         name: fullUser.name,
         email: fullUser.email,
         phone: fullUser.phone,

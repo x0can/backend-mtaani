@@ -126,22 +126,68 @@ io.on("connection", (socket) => {
   /* ---------------------------
      📍 CUSTOMER LIVE LOCATION
   -----------------------------*/
-  socket.on("customer:location", async ({ userId, coords }) => {
+  socket.on("customer:location", async ({ userId, coords, orderId }) => {
     if (!userId || !coords) return;
 
+    // Update user's real-time location
     await User.findByIdAndUpdate(userId, {
       currentLocation: coords,
       lastSeen: new Date(),
     });
 
+    // ALSO update order location if provided
+    if (orderId) {
+      try {
+        await Order.findByIdAndUpdate(orderId, {
+          customerLocation: coords,
+        });
+        console.log("📦 Updated order customerLocation:", orderId, coords);
+      } catch (err) {
+        console.log("❌ Failed to update order customerLocation:", err);
+      }
+    }
+
+    // Emit global event
     io.emit("customer:location", {
       userId,
       lat: coords.lat,
       lng: coords.lng,
     });
 
-    console.log("📍 Customer location:", userId, coords.lat, coords.lng);
+    console.log("📍 Customer location:", userId, coords);
   });
+
+  socket.on("customer:locationOrder", async ({ orderId, userId, lat, lng }) => {
+  if (!orderId || !userId) return;
+
+  const coords = { lat, lng };
+
+  // Update user
+  await User.findByIdAndUpdate(userId, {
+    currentLocation: coords,
+    lastSeen: new Date(),
+  });
+
+  // Update the order
+  try {
+    await Order.findByIdAndUpdate(orderId, {
+      customerLocation: coords,
+    });
+  } catch (err) {
+    console.log("❌ Failed updating order:", err);
+  }
+
+  // Emit to rider inside that order room
+  io.to(`order:${orderId}`).emit("order:customer-location", {
+    orderId,
+    userId,
+    lat,
+    lng,
+  });
+
+  console.log(`📍 CUSTOMER ORDER LOCATION ${orderId}:`, lat, lng);
+});
+
 
   /* ---------------------------
      ❤️ CUSTOMER HEARTBEAT

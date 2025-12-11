@@ -120,4 +120,21 @@ router.put("/api/me", authMiddleware, async (req, res) => {
   }
 });
 
+/***********************************************************************
+ *  GET SINGLE USER (PUBLIC FOR RIDER USE)
+ ***********************************************************************/
+router.get("/api/users/:id", async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).select("-passwordHash");
+
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    res.json(user);
+  } catch (err) {
+    console.error("Fetch user error:", err);
+    res.status(500).json({ message: "Failed to fetch user" });
+  }
+});
+
+
 module.exports = router;

@@ -44,7 +44,6 @@ const UserSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-
 /* ---- Product & Category ---- */
 const ProductCategorySchema = new mongoose.Schema(
   {
@@ -59,17 +58,33 @@ const ProductSchema = new mongoose.Schema(
   {
     title: { type: String, required: true },
     description: String,
+
     price: { type: Number, required: true },
+    priceUpdatedAt: { type: Date, default: Date.now }, // ⭐ NEW
+
     stock: { type: Number, default: 0 },
     images: [String],
-    metadata: mongoose.Schema.Types.Mixed,
+
     category: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "ProductCategory",
     },
+
+    // ⭐ ADMIN CURATION
+    featured: { type: Boolean, default: false },
+    featuredOrder: { type: Number, default: null }, // 1–20
+
+    metadata: mongoose.Schema.Types.Mixed,
   },
   { timestamps: true }
 );
+
+ProductSchema.pre("save", function (next) {
+  if (this.isModified("price")) {
+    this.priceUpdatedAt = new Date();
+  }
+  next();
+});
 
 ProductSchema.index({ title: "text", description: "text" });
 

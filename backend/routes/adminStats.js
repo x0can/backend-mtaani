@@ -44,4 +44,45 @@ router.get(
   }
 );
 
+/***********************************************************************
+ *  ADMIN — SET FEATURED PRODUCTS (TOP 20)
+ ***********************************************************************/
+router.put(
+  "/api/admin/products/featured",
+  authMiddleware,
+  adminOnly,
+  async (req, res) => {
+    try {
+      const { products } = req.body;
+      // products = [{ id, order }]
+
+      if (!Array.isArray(products) || products.length > 20) {
+        return res
+          .status(400)
+          .json({ message: "Maximum of 20 featured products allowed" });
+      }
+
+      // 1️⃣ Reset all featured flags
+      await Product.updateMany(
+        { featured: true },
+        { featured: false, featuredOrder: null }
+      );
+
+      // 2️⃣ Apply new featured set
+      for (const item of products) {
+        await Product.findByIdAndUpdate(item.id, {
+          featured: true,
+          featuredOrder: item.order,
+        });
+      }
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Set featured products error:", err);
+      res.status(500).json({ message: "Failed to update featured products" });
+    }
+  }
+);
+
+
 module.exports = router;

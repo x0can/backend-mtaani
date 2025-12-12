@@ -222,4 +222,32 @@ router.get(
   }
 );
 
+
+// UPDATE OWN PROFILE
+router.put("/api/user/profile", authMiddleware, async (req, res) => {
+  try {
+    const allowed = ["name", "email", "phone"];
+    const updates = {};
+
+    allowed.forEach((key) => {
+      if (typeof req.body[key] !== "undefined") {
+        updates[key] = req.body[key];
+      }
+    });
+
+    const user = await User.findByIdAndUpdate(
+      req.user._id,
+      updates,
+      { new: true }
+    ).select("-passwordHash");
+
+    res.json(user);
+  } catch (err) {
+    console.error("Profile update failed:", err);
+    res.status(500).json({ message: "Profile update failed" });
+  }
+});
+
+
+
 module.exports = router;

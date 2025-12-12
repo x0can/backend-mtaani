@@ -8,6 +8,41 @@ const { authMiddleware, adminOnly } = require("../auth");
 /***********************************************************************
  *  PRODUCTS CRUD (ADMIN + SEARCH)
  ***********************************************************************/
+router.get("/api/products/home", async (req, res) => {
+  try {
+    // 1️⃣ Admin curated products
+    const featured = await Product.find({ featured: true })
+      .populate("category")
+      .sort({ featuredOrder: 1 })
+      .limit(20);
+
+    const featuredIds = featured.map((p) => p._id);
+
+    // 2️⃣ Fill remaining slots with latest products
+    const remaining = 20 - featured.length;
+    let latest = [];
+
+    if (remaining > 0) {
+      latest = await Product.find({
+        _id: { $nin: featuredIds },
+      })
+        .populate("category")
+        .sort({
+          priceUpdatedAt: -1,
+          createdAt: -1,
+        })
+        .limit(remaining);
+    }
+
+    res.json([...featured, ...latest]);
+  } catch (err) {
+    console.error("Home products error:", err);
+    res.status(500).json({ message: "Failed to load home products" });
+  }
+});
+
+
+
 router.get("/api/products", async (req, res) => {
   try {
     const { search } = req.query;
@@ -43,9 +78,16 @@ router.put(
   authMiddleware,
   adminOnly,
   async (req, res) => {
-    const product = await Product.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-    });
+    if (req.body.price !== undefined) {
+      req.body.priceUpdatedAt = new Date();
+    }
+
+    const product = await Product.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true }
+    );
+
     if (!product)
       return res.status(404).json({ message: "Product not found" });
 
@@ -86,5 +128,11 @@ router.get("/api/products/:id", async (req, res) => {
     });
   }
 });
+
+/***********************************************************************
+ *  HOME PRODUCTS (TOP 20)
+ ***********************************************************************/
+
+
 
 module.exports = router;

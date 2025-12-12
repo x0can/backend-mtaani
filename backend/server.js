@@ -116,7 +116,7 @@ io.on("connection", (socket) => {
     });
 
     io.emit("customer:online", {
-      userId,
+      customerId: userId,
       lastSeen: new Date(),
     });
 

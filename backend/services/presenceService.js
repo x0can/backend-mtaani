@@ -18,36 +18,74 @@ function startPresenceMonitor(io) {
     try {
       const cutoff = new Date(Date.now() - PRESENCE_TIMEOUT_MS);
 
-      // Riders who should now be offline
+      /* -----------------------------------------------------
+         RIDERS OFFLINE DETECTION
+      ----------------------------------------------------- */
       const staleRiders = await User.find({
         role: "rider",
         isOnline: true,
         $or: [
           { lastHeartbeat: { $lt: cutoff } },
-          { lastHeartbeat: null },
+          { lastHeartbeat: null }
         ],
       }).select("_id");
 
-      if (!staleRiders.length) return;
+      if (staleRiders.length > 0) {
+        const riderIds = staleRiders.map((u) => u._id);
 
-      const ids = staleRiders.map((u) => u._id);
+        await User.updateMany(
+          { _id: { $in: riderIds } },
+          {
+            isOnline: false,
+            lastSeen: new Date(),
+          }
+        );
 
-      await User.updateMany(
-        { _id: { $in: ids } },
-        {
-          isOnline: false,
-          lastSeen: new Date(),
-        }
-      );
-
-      ids.forEach((id) => {
-        io.emit("rider:offline", {
-          riderId: id,
-          lastSeen: new Date().toISOString(),
+        riderIds.forEach((id) => {
+          io.emit("rider:offline", {
+            riderId: id,
+            lastSeen: new Date().toISOString(),
+          });
         });
-      });
 
-      console.log(`🔻 Presence: Marked ${ids.length} rider(s) offline.`);
+        console.log(`🔻 Presence: Marked ${riderIds.length} rider(s) offline.`);
+      }
+
+      /* -----------------------------------------------------
+         CUSTOMERS OFFLINE DETECTION
+      ----------------------------------------------------- */
+      const staleCustomers = await User.find({
+        role: "customer",
+        isOnline: true,
+        $or: [
+          { lastHeartbeat: { $lt: cutoff } },
+          { lastHeartbeat: null }
+        ],
+      }).select("_id");
+
+      if (staleCustomers.length > 0) {
+        const customerIds = staleCustomers.map((u) => u._id);
+
+        await User.updateMany(
+          { _id: { $in: customerIds } },
+          {
+            isOnline: false,
+            lastSeen: new Date(),
+          }
+        );
+
+        customerIds.forEach((id) => {
+          io.emit("customer:offline", {
+            customerId: id,
+            lastSeen: new Date().toISOString(),
+          });
+        });
+
+        console.log(
+          `🔻 Presence: Marked ${customerIds.length} customer(s) offline.`
+        );
+      }
+
     } catch (err) {
       console.error("Presence monitor error:", err);
     }

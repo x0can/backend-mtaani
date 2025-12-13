@@ -5,55 +5,64 @@ const router = express.Router();
 
 const { User } = require("../db");
 const { generateToken, hashPassword, authMiddleware } = require("../auth");
+const passwordStrength = require("../middleware/passwordStrength");
+const emailValidation = require("../middleware/emailValidation");
+const kenyanPhoneCheck = require("../middleware/kenyanPhoneCheck");
 
 /***********************************************************************
  *  AUTH — REGISTER & LOGIN
  ***********************************************************************/
-router.post("/api/auth/register", async (req, res) => {
-  try {
-    const { name, email, password, phone, role } = req.body;
+router.post(
+  "/api/auth/register",
+  passwordStrength,
+  emailValidation,
+  kenyanPhoneCheck,
+  async (req, res) => {
+    try {
+      const { name, email, password, phone, role } = req.body;
 
-    if (!name || !email || !password || !phone) {
-      return res.status(400).json({ message: "Missing fields" });
+      if (!name || !email || !password || !phone) {
+        return res.status(400).json({ message: "Missing fields" });
+      }
+
+      const exists = await User.findOne({ email });
+      if (exists) {
+        return res.status(400).json({ message: "Email already in use" });
+      }
+
+      const passwordHash = await hashPassword(password);
+
+      const user = await User.create({
+        name,
+        email,
+        phone,
+        passwordHash,
+        isAdmin: false,
+        role: role === "rider" ? "rider" : "customer",
+      });
+
+      const token = generateToken(user);
+
+      const fullUser = await User.findById(user._id).select("-passwordHash");
+
+      res.json({
+        token,
+        user: {
+          _id: fullUser._id,
+          name: fullUser.name,
+          email: fullUser.email,
+          phone: fullUser.phone,
+          role: fullUser.role,
+          verified: fullUser.verified,
+          image: fullUser.image || null,
+        },
+      });
+    } catch (err) {
+      console.error("Registration failed:", err);
+      res.status(500).json({ message: "Registration failed" });
     }
-
-    const exists = await User.findOne({ email });
-    if (exists) {
-      return res.status(400).json({ message: "Email already in use" });
-    }
-
-    const passwordHash = await hashPassword(password);
-
-    const user = await User.create({
-      name,
-      email,
-      phone,
-      passwordHash,
-      isAdmin: false,
-      role: role === "rider" ? "rider" : "customer",
-    });
-
-    const token = generateToken(user);
-
-    const fullUser = await User.findById(user._id).select("-passwordHash");
-
-    res.json({
-      token,
-      user: {
-        _id: fullUser._id,
-        name: fullUser.name,
-        email: fullUser.email,
-        phone: fullUser.phone,
-        role: fullUser.role,
-        verified: fullUser.verified,
-        image: fullUser.image || null, // ⭐ IMPORTANT
-      },
-    });
-  } catch (err) {
-    console.error("Registration failed:", err);
-    res.status(500).json({ message: "Registration failed" });
   }
-});
+);
 
 router.post("/api/auth/login", async (req, res) => {
   try {
@@ -106,7 +115,6 @@ router.get("/api/me", authMiddleware, async (req, res) => {
   });
 });
 
-
 router.put("/api/me", authMiddleware, async (req, res) => {
   try {
     if (req.body.name) req.user.name = req.body.name;
@@ -135,6 +143,5 @@ router.get("/api/users/:id", async (req, res) => {
     res.status(500).json({ message: "Failed to fetch user" });
   }
 });
-
 
 module.exports = router;

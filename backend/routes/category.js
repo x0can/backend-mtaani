@@ -4,9 +4,17 @@ const router = express.Router();
 
 const { ProductCategory } = require("../db");
 const { authMiddleware, adminOnly } = require("../auth");
+const { getCache, setCache, delCache } = require("../services/cache");
 
 router.get("/api/categories", async (req, res) => {
+  const cacheKey = "categories:all";
+
+  const cached = await getCache(cacheKey);
+  if (cached) return res.json(cached);
+
   const categories = await ProductCategory.find();
+  await setCache(cacheKey, categories, 1800); // 30 min
+
   res.json(categories);
 });
 

@@ -4,6 +4,7 @@ const router = express.Router();
 
 const { Order, Product, User } = require("../db");
 const { authMiddleware, adminOnly } = require("../auth");
+const { getCache, setCache, delCache } = require("../services/cache");
 
 /***********************************************************************
  *  ORDERS (CREATE + LIST + DETAILS + UPDATE)
@@ -53,24 +54,25 @@ router.post("/api/orders", authMiddleware, async (req, res) => {
 });
 
 // LIST ORDERS (admin = all, others = own)
+
 router.get("/api/orders", authMiddleware, async (req, res) => {
-  try {
-    const query = req.user.isAdmin ? {} : { user: req.user._id };
+  const cacheKey = req.user.isAdmin
+    ? "orders:admin"
+    : `orders:user:${req.user._id}`;
 
-    const orders = await Order.find(query)
-      .populate("user", "name email phone")
-      .populate("rider", "name email phone")
-      .populate({
-        path: "items.product",
-        populate: { path: "category" },
-      })
-      .sort("-createdAt");
+  const cached = await getCache(cacheKey);
+  if (cached) return res.json(cached);
 
-    res.json(orders);
-  } catch (err) {
-    console.error("Fetch orders failed:", err);
-    res.status(500).json({ message: "Failed to load orders" });
-  }
+  const query = req.user.isAdmin ? {} : { user: req.user._id };
+
+  const orders = await Order.find(query)
+    .populate("user", "name email phone")
+    .populate("rider", "name email phone")
+    .populate({ path: "items.product", populate: { path: "category" } })
+    .sort("-createdAt");
+
+  await setCache(cacheKey, orders, 60);
+  res.json(orders);
 });
 
 // ORDER DETAILS

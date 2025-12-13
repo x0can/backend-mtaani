@@ -8,6 +8,7 @@ const { generateToken, hashPassword, authMiddleware } = require("../auth");
 const passwordStrength = require("../middleware/passwordStrength");
 const emailValidation = require("../middleware/emailValidation");
 const kenyanPhoneCheck = require("../middleware/kenyanPhoneCheck");
+const { getCache, setCache, delCache } = require("../services/cache");
 
 /***********************************************************************
  *  AUTH — REGISTER & LOGIN
@@ -102,17 +103,27 @@ router.post("/api/auth/login", async (req, res) => {
 /***********************************************************************
  *  USER PROFILE
  ***********************************************************************/
+
 router.get("/api/me", authMiddleware, async (req, res) => {
-  const fullUser = await User.findById(req.user._id).select("-passwordHash");
-  res.json({
-    id: fullUser._id,
-    name: fullUser.name,
-    email: fullUser.email,
-    phone: fullUser.phone,
-    role: fullUser.role,
-    verified: fullUser.verified,
-    image: fullUser.image || null, // ⭐ CRITICAL
-  });
+  const cacheKey = `auth:${req.user._id}`;
+
+  const cached = await getCache(cacheKey);
+  if (cached) return res.json(cached);
+
+  const user = await User.findById(req.user._id).select("-passwordHash");
+
+  const payload = {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    phone: user.phone,
+    role: user.role,
+    verified: user.verified,
+    image: user.image || null,
+  };
+
+  await setCache(cacheKey, payload, 300); // 5 min
+  res.json(payload);
 });
 
 router.put("/api/me", authMiddleware, async (req, res) => {

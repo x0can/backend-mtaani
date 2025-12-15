@@ -16,6 +16,8 @@ router.post("/api/orders", authMiddleware, async (req, res) => {
 
     const productIds = items.map((i) => i.product);
     const prods = await Product.find({ _id: { $in: productIds } });
+    await delCache(`orders:user:${req.user._id}`);
+    await delCache("orders:admin");
     const prodMap = {};
     prods.forEach((p) => (prodMap[p._id] = p));
 

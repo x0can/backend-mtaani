@@ -11,7 +11,7 @@ const path = require("path");
 
 const routes = require("./routes/index");
 const { startPresenceMonitor } = require("./services/presenceService");
-const { User } = require("./db");
+const { User, Order } = require("./db");
 
 const app = express();
 
@@ -300,6 +300,7 @@ io.on("connection", (socket) => {
    ROUTES
 --------------------------------------------------- */
 app.use(routes);
+app.disable("etag");
 
 /* ---------------------------------------------------
    GLOBAL ERROR HANDLER

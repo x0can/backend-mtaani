@@ -83,7 +83,6 @@ ProductSchema.pre("save", function (next) {
   if (this.isModified("price")) {
     this.priceUpdatedAt = new Date();
   }
-  next();
 });
 
 ProductSchema.index({ title: "text", description: "text" });

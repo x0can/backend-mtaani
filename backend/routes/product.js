@@ -6,7 +6,6 @@ const { Product } = require("../db");
 const { authMiddleware, adminOnly } = require("../auth");
 const { getCache, setCache, delCache } = require("../services/cache");
 
-
 /***********************************************************************
  *  PRODUCTS CRUD (ADMIN + SEARCH)
  ***********************************************************************/
@@ -21,7 +20,7 @@ router.get("/api/products/home", async (req, res) => {
     .sort({ featuredOrder: 1 })
     .limit(20);
 
-  const featuredIds = featured.map(p => p._id);
+  const featuredIds = featured.map((p) => p._id);
 
   const remaining = 20 - featured.length;
   let latest = [];
@@ -38,9 +37,6 @@ router.get("/api/products/home", async (req, res) => {
 
   res.json(result);
 });
-
-
-
 
 router.get("/api/products", async (req, res) => {
   const { search } = req.query;
@@ -64,34 +60,31 @@ router.get("/api/products", async (req, res) => {
 router.post("/api/products", authMiddleware, adminOnly, async (req, res) => {
   try {
     const product = await Product.create(req.body);
-    res.status(201).json(product);
+    const populated = await Product.findById(product._id).populate("category");
+    await delCache("products:list:all");
+    await delCache("products:home");
+    
+    req.io.emit("product:created", populated);
+    res.status(201).json(populated);
   } catch (err) {
     console.error("Create product failed:", err);
     res.status(400).json({ message: "Invalid product data" });
   }
 });
 
-router.put(
-  "/api/products/:id",
-  authMiddleware,
-  adminOnly,
-  async (req, res) => {
-    if (req.body.price !== undefined) {
-      req.body.priceUpdatedAt = new Date();
-    }
-
-    const product = await Product.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true }
-    );
-
-    if (!product)
-      return res.status(404).json({ message: "Product not found" });
-
-    res.json(product);
+router.put("/api/products/:id", authMiddleware, adminOnly, async (req, res) => {
+  if (req.body.price !== undefined) {
+    req.body.priceUpdatedAt = new Date();
   }
-);
+
+  const product = await Product.findByIdAndUpdate(req.params.id, req.body, {
+    new: true,
+  });
+
+  if (!product) return res.status(404).json({ message: "Product not found" });
+
+  res.json(product);
+});
 
 router.delete(
   "/api/products/:id",
@@ -99,8 +92,7 @@ router.delete(
   adminOnly,
   async (req, res) => {
     const product = await Product.findByIdAndDelete(req.params.id);
-    if (!product)
-      return res.status(404).json({ message: "Product not found" });
+    if (!product) return res.status(404).json({ message: "Product not found" });
 
     res.json({ message: "Deleted" });
   }
@@ -130,7 +122,5 @@ router.get("/api/products/:id", async (req, res) => {
 /***********************************************************************
  *  HOME PRODUCTS (TOP 20)
  ***********************************************************************/
-
-
 
 module.exports = router;

@@ -116,6 +116,9 @@ router.put("/api/orders/:id", authMiddleware, async (req, res) => {
 
     if (!order) return res.status(404).json({ message: "Order not found" });
 
+    await delCache(`orders:user:${req.user._id}`);
+    await delCache("orders:admin");
+    
     const validStatuses = [
       "created",
       "paid",

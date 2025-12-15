@@ -63,7 +63,7 @@ router.post("/api/products", authMiddleware, adminOnly, async (req, res) => {
     const populated = await Product.findById(product._id).populate("category");
     await delCache("products:list:all");
     await delCache("products:home");
-    
+
     req.io.emit("product:created", populated);
     res.status(201).json(populated);
   } catch (err) {
@@ -82,7 +82,8 @@ router.put("/api/products/:id", authMiddleware, adminOnly, async (req, res) => {
   });
 
   if (!product) return res.status(404).json({ message: "Product not found" });
-
+  await delCache("products:list:all");
+  await delCache("products:home");
   res.json(product);
 });
 

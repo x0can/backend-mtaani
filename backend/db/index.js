@@ -22,6 +22,16 @@ const UserSchema = new mongoose.Schema(
     // verification & status
     verified: { type: Boolean, default: false },
     active: { type: Boolean, default: true },
+    // phone verification (OTP)
+    phoneOtpHash: { type: String, default: null },
+    phoneOtpExpiresAt: { type: Date, default: null },
+    phoneOtpLastSentAt: { type: Date, default: null },
+    phoneOtpAttempts: { type: Number, default: 0 },
+
+    emailOtpHash: { type: String, default: null },
+    emailOtpExpiresAt: { type: Date, default: null },
+    emailOtpLastSentAt: { type: Date, default: null },
+    emailVerified: { type: Boolean, default: false },
 
     // presence
     isOnline: { type: Boolean, default: false },

@@ -9,6 +9,11 @@ const passwordStrength = require("../middleware/passwordStrength");
 const emailValidation = require("../middleware/emailValidation");
 const kenyanPhoneCheck = require("../middleware/kenyanPhoneCheck");
 const { getCache, setCache, delCache } = require("../services/cache");
+const {
+  sendPhoneOtp,
+  verifyPhoneOtp,
+} = require("../controllers/phoneVerification");
+const { sendEmailOtp, verifyEmailOtp } = require("../controllers/emailVerification");
 
 /***********************************************************************
  *  AUTH — REGISTER & LOGIN
@@ -99,6 +104,13 @@ router.post("/api/auth/login", async (req, res) => {
     res.status(500).json({ message: "Login failed" });
   }
 });
+
+router.post("/api/auth/resend-code", authMiddleware, sendPhoneOtp);
+router.post("/api/auth/verify-phone", authMiddleware, verifyPhoneOtp);
+
+router.post("/api/auth/send-email-otp", authMiddleware, sendEmailOtp);
+router.post("/api/auth/verify-email-otp", authMiddleware, verifyEmailOtp);
+
 
 /***********************************************************************
  *  USER PROFILE

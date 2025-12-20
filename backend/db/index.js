@@ -66,25 +66,58 @@ const ProductCategorySchema = new mongoose.Schema(
 
 const ProductSchema = new mongoose.Schema(
   {
-    title: { type: String, required: true },
-    description: String,
+    title: { type: String, required: true, trim: true },
 
-    price: { type: Number, required: true },
-    priceUpdatedAt: { type: Date, default: Date.now }, // ⭐ NEW
+    /* ---------------- PRICING ---------------- */
+    price: { type: Number, required: true }, // SELLING price
+    priceUpdatedAt: { type: Date, default: Date.now },
 
+    cost: { type: Number, default: 0 }, // 🔥 avg cost snapshot
+
+    priceHistory: [
+      {
+        price: Number,
+        changedAt: { type: Date, default: Date.now },
+        source: {
+          type: String,
+          enum: ["manual", "import", "sync"],
+          default: "import",
+        },
+      },
+    ],
+
+    /* ---------------- INVENTORY ---------------- */
     stock: { type: Number, default: 0 },
+    uom: { type: String, default: "PCS" },
+
+    /* ---------------- MEDIA ---------------- */
     images: [String],
 
+    /* ---------------- CATEGORY ---------------- */
     category: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "ProductCategory",
+      index: true,
     },
 
-    // ⭐ ADMIN CURATION
     featured: { type: Boolean, default: false },
-    featuredOrder: { type: Number, default: null }, // 1–20
+    featuredOrder: { type: Number, default: null },
 
-    metadata: mongoose.Schema.Types.Mixed,
+    /* ---------------- METADATA ---------------- */
+    metadata: {
+      itemNumber: {
+        type: String,
+        index: true,
+        sparse: true, // allows missing values
+      },
+
+      avgCost: Number,
+      value: Number,
+      turnover: Number,
+
+      lastImported: Date,
+      importSource: { type: String, default: "excel" },
+    },
   },
   { timestamps: true }
 );
@@ -92,10 +125,39 @@ const ProductSchema = new mongoose.Schema(
 ProductSchema.pre("save", function (next) {
   if (this.isModified("price")) {
     this.priceUpdatedAt = new Date();
+
+    this.priceHistory.push({
+      price: this.price,
+      source: "manual",
+    });
   }
+  next();
 });
 
-ProductSchema.index({ title: "text", description: "text" });
+ProductSchema.index({ title: "text" });
+ProductSchema.index({ price: 1 });
+ProductSchema.index({ stock: 1 });
+ProductSchema.index({ "metadata.itemNumber": 1 }, { sparse: true });
+
+const StockMovementSchema = new mongoose.Schema(
+  {
+    product: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+      required: true,
+    },
+    type: {
+      type: String,
+      enum: ["IN", "OUT", "ADJUSTMENT"],
+      required: true,
+    },
+    quantity: { type: Number, required: true },
+    reason: String,
+    reference: String, // orderId, importId, etc
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+  },
+  { timestamps: true }
+);
 
 /* ---- Orders ---- */
 const OrderItemSchema = new mongoose.Schema({
@@ -140,7 +202,6 @@ const ProductCategory = mongoose.model(
   "ProductCategory",
   ProductCategorySchema
 );
-
 module.exports = {
   User,
   Product,

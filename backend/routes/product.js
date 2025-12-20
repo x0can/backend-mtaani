@@ -10,32 +10,56 @@ const { getCache, setCache, delCache } = require("../services/cache");
  *  PRODUCTS CRUD (ADMIN + SEARCH)
  ***********************************************************************/
 router.get("/api/products/home", async (req, res) => {
-  const cacheKey = "products:home";
+  try {
+    const LIMIT = 3000;
+    const cacheKey = "products:home:v2";
 
-  const cached = await getCache(cacheKey);
-  if (cached) return res.json(cached);
+    const cached = await getCache(cacheKey);
+    if (cached) return res.json(cached);
 
-  const featured = await Product.find({ featured: true })
-    .populate("category")
-    .sort({ featuredOrder: 1 })
-    .limit(20);
+    // 🔹 Common projection (adjust fields as needed)
+    const projection = {
+      title: 1,
+      price: 1,
+      images: 1,
+      featured: 1,
+      featuredOrder: 1,
+      priceUpdatedAt: 1,
+      createdAt: 1,
+      category: 1,
+    };
 
-  const featuredIds = featured.map((p) => p._id);
+    // 🔹 Fetch featured first
+    const featuredPromise = Product.find({ featured: true })
+      .select(projection)
+      .populate("category", "name slug")
+      .sort({ featuredOrder: 1 })
+      .limit(2000)
+      .lean();
 
-  const remaining = 20 - featured.length;
-  let latest = [];
+    const featured = await featuredPromise;
+    const featuredIds = featured.map((p) => p._id);
 
-  if (remaining > 0) {
-    latest = await Product.find({ _id: { $nin: featuredIds } })
-      .populate("category")
-      .sort({ priceUpdatedAt: -1, createdAt: -1 })
-      .limit(remaining);
+    const remaining = LIMIT - featured.length;
+
+    let latest = [];
+    if (remaining > 0) {
+      latest = await Product.find({ _id: { $nin: featuredIds } })
+        .select(projection)
+        .populate("category", "name slug")
+        .sort({ priceUpdatedAt: -1, createdAt: -1 })
+        .limit(remaining)
+        .lean();
+    }
+
+    const result = [...featured, ...latest];
+
+    await setCache(cacheKey, result, 600); // 10 min cache
+    res.json(result);
+  } catch (err) {
+    console.error("Home products error:", err);
+    res.status(500).json({ message: "Failed to load home products" });
   }
-
-  const result = [...featured, ...latest];
-  await setCache(cacheKey, result, 600); // 10 min
-
-  res.json(result);
 });
 
 router.get("/api/products", async (req, res) => {
@@ -99,26 +123,71 @@ router.delete(
   }
 );
 
+
+
+// GET /api/products/paginated?page=1&limit=20
+/***********************************************************************
+ *  PAGINATED PRODUCTS (MUST BE ABOVE :id)
+ ***********************************************************************/
+router.get("/api/products/paginated", async (req, res) => {
+  try {
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+    const skip = (page - 1) * limit;
+
+    const search = req.query.search?.trim();
+    const category = req.query.category;
+
+    const query = {};
+
+    if (search) {
+      query.title = { $regex: search, $options: "i" };
+    }
+
+    if (category) {
+      query.category = category;
+    }
+
+    const [products, total] = await Promise.all([
+      Product.find(query)
+        .populate("category", "name")
+        .sort({ createdAt: -1 }) // stable pagination
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+
+      Product.countDocuments(query),
+    ]);
+
+    res.json({
+      products,
+      hasMore: skip + products.length < total,
+      page,
+    });
+  } catch (err) {
+    console.error("Paginated products error:", err);
+    res.status(500).json({ message: "Failed to load products" });
+  }
+});
+
+/***********************************************************************
+ *  SINGLE PRODUCT (KEEP LAST)
+ ***********************************************************************/
 router.get("/api/products/:id", async (req, res) => {
   try {
     const product = await Product.findById(req.params.id).populate("category");
 
     if (!product) {
-      return res.status(404).json({
-        success: false,
-        message: "Product not found",
-      });
+      return res.status(404).json({ message: "Product not found" });
     }
 
     res.json(product);
   } catch (err) {
     console.error("Error fetching product:", err);
-    res.status(500).json({
-      success: false,
-      message: "Server error",
-    });
+    res.status(500).json({ message: "Server error" });
   }
 });
+
 
 /***********************************************************************
  *  HOME PRODUCTS (TOP 20)

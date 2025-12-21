@@ -63,23 +63,74 @@ router.get("/api/products/home", async (req, res) => {
 });
 
 router.get("/api/products", async (req, res) => {
-  const { search } = req.query;
-  const cacheKey = `products:list:${search || "all"}`;
+  try {
+    const { search } = req.query;
+    const cacheKey = `products:list:${search || "all"}`;
+    await delCache("products:list:all"); // temp clear all cache to avoid stale data
 
-  const cached = await getCache(cacheKey);
-  if (cached) return res.json(cached);
+    const cached = await getCache(cacheKey);
+    if (cached) return res.json(cached);
 
-  let query = {};
-  if (search) {
-    const regex = new RegExp(search, "i");
-    query = { $or: [{ title: regex }, { description: regex }] };
+    const projection = {
+      title: 1,
+      description: 1,
+      price: 1,
+      stock: 1,
+      images: 1,
+      featured: 1,
+      featuredOrder: 1,
+      createdAt: 1,
+      priceUpdatedAt: 1,
+      category: 1,
+    };
+
+    /** ---------------------------
+     * Build search query
+     * -------------------------- */
+    let searchQuery = {};
+    if (search) {
+      const regex = new RegExp(search, "i");
+      searchQuery = {
+        $or: [{ title: regex }, { description: regex }],
+      };
+    }
+
+    /** ---------------------------
+     * 1️⃣ Featured first
+     * -------------------------- */
+    const featured = await Product.find({
+      ...searchQuery,
+      featured: true,
+    })
+      .select(projection)
+      .populate("category")
+      .sort({ featuredOrder: 1 })
+      .lean();
+
+    const featuredIds = featured.map((p) => p._id);
+
+    /** ---------------------------
+     * 2️⃣ Remaining products
+     * -------------------------- */
+    const rest = await Product.find({
+      ...searchQuery,
+      _id: { $nin: featuredIds },
+    })
+      .select(projection)
+      .populate("category")
+      .sort({ priceUpdatedAt: -1, createdAt: -1 })
+      .lean();
+
+    const result = [...featured, ...rest];
+
+    await setCache(cacheKey, result, 600); // 10 min cache
+    res.json(result);
+  } catch (err) {
+    console.error("Products list error:", err);
+    res.status(500).json({ message: "Failed to load products" });
   }
-
-  const products = await Product.find(query).populate("category");
-  await setCache(cacheKey, products, 600);
-
-  res.json(products);
 });
+
 
 router.post("/api/products", authMiddleware, adminOnly, async (req, res) => {
   try {

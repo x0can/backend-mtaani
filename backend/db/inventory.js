@@ -12,6 +12,8 @@ const XLSX = require("xlsx");
 const mongoose = require("mongoose");
 
 const connectDB = require("./mongo");
+const crypto = require("crypto");
+
 const { Product } = require("./index");
 
 /* ----------------------------------------
@@ -25,7 +27,11 @@ const cleanText = (val) =>
     .replace(/\s+/g, " ");
 
 const cleanNumber = (val) =>
-  Number(String(val || "0").replace(/,/g, "").trim()) || 0;
+  Number(
+    String(val || "0")
+      .replace(/,/g, "")
+      .trim()
+  ) || 0;
 
 const BATCH_SIZE = 500;
 
@@ -69,9 +75,7 @@ async function run() {
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
 
-    const hasAnyData = Object.values(row).some(
-      (v) => String(v).trim() !== ""
-    );
+    const hasAnyData = Object.values(row).some((v) => String(v).trim() !== "");
 
     if (!hasAnyData) {
       skipped++;
@@ -79,9 +83,8 @@ async function run() {
     }
 
     const itemNumber =
-      cleanText(
-        row.item_number || row["item number"] || row["Item Number"]
-      ) || carriedItemNumber;
+      cleanText(row.item_number || row["item number"] || row["Item Number"]) ||
+      carriedItemNumber;
 
     const title =
       cleanText(
@@ -90,8 +93,7 @@ async function run() {
       carriedTitle ||
       `UNNAMED ITEM ${i + 2}`;
 
-    const uom =
-      cleanText(row.UOM || row.uom) || carriedUOM || "PCS";
+    const uom = cleanText(row.UOM || row.uom) || carriedUOM || "PCS";
 
     carriedItemNumber = itemNumber;
     carriedTitle = title;
@@ -102,28 +104,30 @@ async function run() {
 
     const fallbackKey = itemNumber || `${title}__${uom}`;
 
-    ops.push({
-      updateOne: {
-        filter: itemNumber
-          ? { "metadata.itemNumber": itemNumber }
-          : { "metadata.fallbackKey": fallbackKey },
+    const importRowKey = crypto
+      .createHash("sha1")
+      .update(`${i}-${itemNumber}-${title}-${uom}`)
+      .digest("hex");
 
-        update: {
-          $set: {
-            title,
-            price,
-            uom,
-            cost: avgCost,
-            stock: 0,
-            metadata: {
-              itemNumber,
-              avgCost,
-              fallbackKey,
-              lastImported: new Date(),
-            },
+    ops.push({
+      insertOne: {
+        document: {
+          title,
+          price,
+          uom,
+          cost: avgCost,
+          stock: 0,
+
+          metadata: {
+            itemNumber,
+            avgCost,
+            fallbackKey,
+            importRowKey,
+            importIndex: i + 2, // Excel row number
+            lastImported: new Date(),
+            importSource: "excel",
           },
         },
-        upsert: true,
       },
     });
 

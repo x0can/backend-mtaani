@@ -137,27 +137,8 @@ ProductSchema.pre("save", function (next) {
 ProductSchema.index({ title: "text" });
 ProductSchema.index({ price: 1 });
 ProductSchema.index({ stock: 1 });
-ProductSchema.index({ "metadata.itemNumber": 1 }, { sparse: true });
 
-const StockMovementSchema = new mongoose.Schema(
-  {
-    product: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Product",
-      required: true,
-    },
-    type: {
-      type: String,
-      enum: ["IN", "OUT", "ADJUSTMENT"],
-      required: true,
-    },
-    quantity: { type: Number, required: true },
-    reason: String,
-    reference: String, // orderId, importId, etc
-    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-  },
-  { timestamps: true }
-);
+
 
 /* ---- Orders ---- */
 const OrderItemSchema = new mongoose.Schema({

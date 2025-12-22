@@ -5,6 +5,16 @@ const router = express.Router();
 const { Order, Product, User } = require("../db");
 const { authMiddleware, adminOnly } = require("../auth");
 const { getCache, setCache, delCache } = require("../services/cache");
+const recalculateOrderTotal = require("../utils/recalculateOrderTotal");
+
+function assertAdminCanEditOrder(order) {
+  if (!order) throw new Error("Order not found");
+  if (["completed", "cancelled"].includes(order.status)) {
+    const err = new Error("Order is locked");
+    err.status = 400;
+    throw err;
+  }
+}
 
 /***********************************************************************
  *  ORDERS (CREATE + LIST + DETAILS + UPDATE)
@@ -37,6 +47,8 @@ router.post("/api/orders", authMiddleware, async (req, res) => {
     const order = await Order.create({
       user: req.user._id,
       items: orderItems,
+      originalTotal: total,
+      finalTotal: total,
       total,
       shippingAddress,
     });
@@ -73,7 +85,7 @@ router.get("/api/orders", authMiddleware, async (req, res) => {
     .populate({ path: "items.product", populate: { path: "category" } })
     .sort("-createdAt");
 
-  await setCache(cacheKey, orders, 60);
+  await setCache(cacheKey, orders, 60); // cache for 60 seconds
   res.json(orders);
 });
 
@@ -118,7 +130,7 @@ router.put("/api/orders/:id", authMiddleware, async (req, res) => {
 
     await delCache(`orders:user:${req.user._id}`);
     await delCache("orders:admin");
-    
+
     const validStatuses = [
       "created",
       "paid",
@@ -318,6 +330,169 @@ router.put(
       console.error("Complete order failed:", err);
       res.status(500).json({ message: "Failed to complete order" });
     }
+  }
+);
+
+router.post(
+  "/api/orders/:id/items",
+  authMiddleware,
+  adminOnly,
+  async (req, res) => {
+    try {
+      const { productId, quantity = 1 } = req.body;
+      const order = await Order.findById(req.params.id).populate(
+        "items.product"
+      );
+      assertAdminCanEditOrder(order);
+
+      const product = await Product.findById(productId);
+      if (!product)
+        return res.status(404).json({ message: "Product not found" });
+
+      const qty = Math.max(1, Number(quantity));
+      const existing = order.items.find(
+        (i) => String(i.product._id) === String(productId)
+      );
+
+      if (existing) {
+        existing.quantity += qty;
+      } else {
+        order.items.push({
+          product: product._id,
+          quantity: qty,
+          priceAtPurchase: product.price,
+        });
+      }
+
+      order.adjustments.push({
+        type: "add_item",
+        amount: product.price * qty,
+        note: `Added ${qty} x ${product.title}`,
+        by: req.user._id,
+      });
+
+      recalculateOrderTotal(order);
+      order.fulfillmentStatus = "pending";
+
+      await order.save();
+      await delCache("orders:admin");
+      await delCache(`orders:user:${order.user}`);
+
+      res.json({ success: true, order });
+    } catch (err) {
+      res.status(err.status || 500).json({ message: err.message });
+    }
+  }
+);
+
+/* ======================================================
+   UPDATE ITEM QUANTITY
+====================================================== */
+router.put(
+  "/api/orders/:id/items/:itemId",
+  authMiddleware,
+  adminOnly,
+  async (req, res) => {
+    const { quantity } = req.body;
+    const order = await Order.findById(req.params.id).populate("items.product");
+    assertAdminCanEditOrder(order);
+
+    const item = order.items.id(req.params.itemId);
+    if (!item) return res.status(404).json({ message: "Item not found" });
+
+    const oldQty = item.quantity;
+    item.quantity = Math.max(1, Number(quantity));
+
+    order.adjustments.push({
+      type: "manual",
+      amount: (item.quantity - oldQty) * item.priceAtPurchase,
+      note: `Qty change ${oldQty} → ${item.quantity}`,
+      by: req.user._id,
+    });
+
+    recalculateOrderTotal(order);
+    order.fulfillmentStatus = "pending";
+
+    await order.save();
+    await delCache("orders:admin");
+    await delCache(`orders:user:${order.user}`);
+
+    res.json({ success: true, order });
+  }
+);
+
+/* ======================================================
+   DELETE ITEM
+====================================================== */
+router.delete(
+  "/api/orders/:id/items/:itemId",
+  authMiddleware,
+  adminOnly,
+  async (req, res) => {
+    const order = await Order.findById(req.params.id).populate("items.product");
+    assertAdminCanEditOrder(order);
+
+    const item = order.items.id(req.params.itemId);
+    if (!item) return res.status(404).json({ message: "Item not found" });
+
+    order.adjustments.push({
+      type: "remove_item",
+      amount: -(item.quantity * item.priceAtPurchase),
+      note: `Removed ${item.product.title}`,
+      by: req.user._id,
+    });
+
+    item.deleteOne();
+
+    recalculateOrderTotal(order);
+    order.fulfillmentStatus = "pending";
+
+    await order.save();
+    await delCache("orders:admin");
+    await delCache(`orders:user:${order.user}`);
+
+    res.json({ success: true, order });
+  }
+);
+
+/* ======================================================
+   FULFILLMENT REVIEW (FINAL PAYABLE)
+====================================================== */
+router.put(
+  "/api/orders/:id/items",
+  authMiddleware,
+  adminOnly,
+  async (req, res) => {
+    const { items } = req.body;
+    if (!Array.isArray(items)) {
+      return res.status(400).json({ message: "`items` must be an array" });
+    }
+
+    const order = await Order.findById(req.params.id).populate("items.product");
+    assertAdminCanEditOrder(order);
+
+    for (const orderItem of order.items) {
+      const update = items.find(
+        (i) => String(i.itemId) === String(orderItem._id)
+      );
+      if (!update) continue;
+
+      orderItem.availability = update.availability || "available";
+      orderItem.fulfilledQuantity =
+        orderItem.availability === "missing"
+          ? 0
+          : Math.min(update.fulfilledQuantity, orderItem.quantity);
+      orderItem.adminNote = update.adminNote || "";
+    }
+
+    order.fulfillmentStatus = "reviewed";
+    recalculateOrderTotal(order);
+
+    await order.save();
+    await delCache("orders:admin");
+    await delCache(`orders:user:${order.user}`);
+
+    res.json({ success: true, order });
   }
 );
 

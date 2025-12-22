@@ -1,34 +1,26 @@
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
 
-const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 587,
-  secure: false,
-  requireTLS: true, // 🔥 IMPORTANT for Render
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  tls: {
-    rejectUnauthorized: false, // 🔥 avoids Render TLS edge cases
-  },
-});
-
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 exports.sendEmail = async ({ to, subject, html }) => {
-  try {
-    const info = await transporter.sendMail({
-      from: `"Mtaani" <${process.env.EMAIL_USER}>`,
-      to,
-      subject,
-      html,
-    });
+  const { data, error } = await resend.emails.send({
+    from: "Mtaani <no-reply@mtaani.co.ke>", // or resend.dev for testing
+    to: Array.isArray(to) ? to : [to],
+    subject,
+    html,
+  });
 
-    console.log("📧 Email sent:", info.messageId);
-    return info;
-  } catch (err) {
-    console.error("❌ Email send failed:", err);
-    throw err;
+  if (error) {
+    console.error("❌ Resend error:", error);
+    throw new Error(error.message || "Email send failed");
   }
-};
 
+  // ✅ Accepted by Resend
+  console.log("📧 Email accepted:", data);
+
+  return {
+    accepted: true,
+    messageId: data?.id ?? null, // may be undefined, that's OK
+    raw: data,
+  };
+};

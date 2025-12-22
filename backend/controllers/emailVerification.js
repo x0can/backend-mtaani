@@ -11,11 +11,12 @@ exports.sendEmailOtp = async (req, res) => {
       return res.status(400).json({ message: "Email not found" });
     }
 
-    if (user.verified) {
+    // 🔒 use ONE source of truth
+    if (user.emailVerified === true) {
       return res.json({ message: "Email already verified" });
     }
 
-    // rate limit (30s)
+    // ⏱ rate limit (30s)
     if (
       user.emailOtpLastSentAt &&
       Date.now() - user.emailOtpLastSentAt.getTime() < 30_000
@@ -25,29 +26,45 @@ exports.sendEmailOtp = async (req, res) => {
       });
     }
 
+    // 🔐 generate OTP
     const otp = generateOtp();
+    const otpHash = hashOtp(otp);
+    const expiresAt = Date.now() + 5 * 60 * 1000;
 
-    user.emailOtpHash = hashOtp(otp);
-    user.emailOtpExpiresAt = Date.now() + 5 * 60 * 1000;
-    user.emailOtpLastSentAt = new Date();
-
-    await user.save();
-
-    await sendEmail({
+    // 📧 send email (Resend-style)
+    const emailResult = await sendEmail({
       to: user.email,
       subject: "Your Mtaani verification code",
       html: `
-      <h2>Mtaani Verification</h2>
-      <p>Your verification code is:</p>
-      <h1>${otp}</h1>
-      <p>This code expires in 5 minutes.</p>
+        <h2>Mtaani Verification</h2>
+        <p>Your verification code is:</p>
+        <h1>${otp}</h1>
+        <p>This code expires in 5 minutes.</p>
       `,
     });
 
-    res.json({ message: "Verification email sent" });
+    // ❌ only fail if provider explicitly errored
+    if (!emailResult || emailResult.accepted !== true) {
+      throw new Error("Email not accepted by provider");
+    }
+
+    // ✅ persist OTP AFTER acceptance
+    user.emailOtpHash = otpHash;
+    user.emailOtpExpiresAt = expiresAt;
+    user.emailOtpLastSentAt = new Date();
+    user.emailOtpMessageId = emailResult.messageId ?? null;
+
+    await user.save();
+
+    return res.json({
+      message: "Verification email sent",
+    });
   } catch (err) {
     console.error("Send email OTP error:", err);
-    res.status(500).json({ message: "Failed to send verification email" });
+
+    return res.status(500).json({
+      message: "Failed to send verification email. Please try again.",
+    });
   }
 };
 
@@ -65,7 +82,7 @@ exports.verifyEmailOtp = async (req, res) => {
       return res.status(400).json({ message: "No verification in progress" });
     }
 
-    if (user.emailOtpExpiresAt < Date.now()) {
+    if (!user.emailOtpExpiresAt || user.emailOtpExpiresAt < Date.now()) {
       return res.status(400).json({ message: "Code expired" });
     }
 
@@ -73,17 +90,24 @@ exports.verifyEmailOtp = async (req, res) => {
       return res.status(400).json({ message: "Invalid code" });
     }
 
+    // ✅ verified (single source of truth)
     user.emailVerified = true;
+    user.verified = true;
+
+    // 🧹 cleanup
     user.emailOtpHash = null;
     user.emailOtpExpiresAt = null;
     user.emailOtpLastSentAt = null;
-    user.verified = true;
+    user.emailOtpMessageId = null;
 
     await user.save();
 
-    res.json({ message: "Email verified successfully", user });
+    return res.json({
+      message: "Email verified successfully",
+      user,
+    });
   } catch (err) {
     console.error("Verify email OTP error:", err);
-    res.status(500).json({ message: "Verification failed" });
+    return res.status(500).json({ message: "Verification failed" });
   }
 };

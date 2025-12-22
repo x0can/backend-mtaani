@@ -138,10 +138,10 @@ ProductSchema.index({ title: "text" });
 ProductSchema.index({ price: 1 });
 ProductSchema.index({ stock: 1 });
 
-
-
 /* ---- Orders ---- */
 const OrderItemSchema = new mongoose.Schema({
+  _id: { type: mongoose.Schema.Types.ObjectId, auto: true }, // 👈 important
+
   product: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Product",
@@ -149,6 +149,15 @@ const OrderItemSchema = new mongoose.Schema({
   },
   quantity: { type: Number, required: true, min: 1 },
   priceAtPurchase: { type: Number, required: true },
+
+  fulfilledQuantity: { type: Number, default: null },
+  availability: {
+    type: String,
+    enum: ["available", "missing"],
+    default: "available",
+  },
+
+  adminNote: String,
 });
 
 const OrderSchema = new mongoose.Schema(
@@ -162,6 +171,28 @@ const OrderSchema = new mongoose.Schema(
       enum: ["created", "paid", "shipped", "completed", "cancelled"],
       default: "created",
     },
+    originalTotal: { type: Number, required: true, immutable: true },
+
+    finalTotal: { type: Number, default: null },
+
+    fulfillmentStatus: {
+      type: String,
+      enum: ["pending", "reviewed"],
+      default: "pending",
+    },
+    adjustments: [
+      {
+        type: {
+          type: String,
+          enum: ["add_item", "remove_item", "manual"],
+          required: true,
+        },
+        amount: { type: Number, required: true }, // + or -
+        note: { type: String, default: "" },
+        createdAt: { type: Date, default: Date.now },
+        by: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      },
+    ],
 
     paymentInfo: mongoose.Schema.Types.Mixed, // ⭐ ADD THIS
 
@@ -172,6 +203,7 @@ const OrderSchema = new mongoose.Schema(
       lng: { type: Number, default: 0 },
     },
   },
+
   { timestamps: true }
 );
 

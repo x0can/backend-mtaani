@@ -103,6 +103,17 @@ const ProductSchema = new mongoose.Schema(
     featured: { type: Boolean, default: false },
     featuredOrder: { type: Number, default: null },
 
+    isActive: { type: Boolean, default: true },
+
+    isFlashDeal: { type: Boolean, default: false },
+    flashDeal: {
+      discountPercent: { type: Number, min: 1, max: 90 },
+      startAt: Date,
+      endAt: Date,
+    },
+
+    lowStockThreshold: { type: Number, default: 5 },
+
     /* ---------------- METADATA ---------------- */
     metadata: {
       itemNumber: {
@@ -137,6 +148,9 @@ ProductSchema.pre("save", function (next) {
 ProductSchema.index({ title: "text" });
 ProductSchema.index({ price: 1 });
 ProductSchema.index({ stock: 1 });
+ProductSchema.index({ isActive: 1 });
+ProductSchema.index({ featured: 1, featuredOrder: 1 });
+ProductSchema.index({ isFlashDeal: 1 });
 
 /* ---- Orders ---- */
 const OrderItemSchema = new mongoose.Schema({

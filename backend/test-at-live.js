@@ -1,31 +1,87 @@
+/* eslint-disable no-console */
+require("dotenv").config();
 const mongoose = require("mongoose");
-const { Order } = require("./db");
+const { Product } = require("./db");
 
-(async () => {
-  try {
-    console.log("🔌 Connecting to MongoDB...");
+const MONGO_URI = "mongodb+srv://xocan:waveLike8ese@cluster0.d56yh2c.mongodb.net/"
 
-    await mongoose.connect(
-      "mongodb+srv://xocan:waveLike8ese@cluster0.d56yh2c.mongodb.net/",
-      {}
-    );
+async function migrateProducts() {
+  console.log("🔌 Connecting to MongoDB...");
+  await mongoose.connect(MONGO_URI);
 
-    console.log("✅ Connected");
+  console.log("🚀 Starting product migration...");
 
-    const result = await Order.updateMany(
-      { originalTotal: { $exists: false } },
-      [{ $set: { originalTotal: "$total" } }],
-      { updatePipeline: true } // 🔥 REQUIRED
-    );
+  const updates = {
+    // add missing flags safely
+    isActive: true,
+    isFlashDeal: false,
+    lowStockThreshold: 5,
+  };
 
-    console.log("🛠 Migration result:");
-    console.log(`Matched: ${result.matchedCount}`);
-    console.log(`Modified: ${result.modifiedCount}`);
+  /* --------------------------------------------------
+     1️⃣ Add missing simple fields
+  -------------------------------------------------- */
+  const baseResult = await Product.updateMany(
+    {
+      $or: [
+        { isActive: { $exists: false } },
+        { isFlashDeal: { $exists: false } },
+        { lowStockThreshold: { $exists: false } },
+      ],
+    },
+    {
+      $set: updates,
+    }
+  );
 
-    console.log("🎉 Migration complete");
-    process.exit(0);
-  } catch (err) {
-    console.error("❌ Migration failed:", err);
-    process.exit(1);
-  }
-})();
+  console.log(
+    `✅ Base fields updated: ${baseResult.modifiedCount}`
+  );
+
+  /* --------------------------------------------------
+     2️⃣ Normalize flashDeal
+  -------------------------------------------------- */
+  const flashResult = await Product.updateMany(
+    {
+      isFlashDeal: true,
+      flashDeal: { $exists: false },
+    },
+    {
+      $set: { flashDeal: null },
+    }
+  );
+
+  console.log(
+    `🔥 Flash deal normalized: ${flashResult.modifiedCount}`
+  );
+
+  /* --------------------------------------------------
+     3️⃣ Normalize featured fields
+  -------------------------------------------------- */
+  const featuredResult = await Product.updateMany(
+    {
+      featured: { $exists: false },
+    },
+    {
+      $set: {
+        featured: false,
+        featuredOrder: null,
+      },
+    }
+  );
+
+  console.log(
+    `⭐ Featured fields normalized: ${featuredResult.modifiedCount}`
+  );
+
+  console.log("🎉 Product migration completed successfully");
+  process.exit(0);
+}
+
+/* --------------------------------------------------
+   Run
+-------------------------------------------------- */
+migrateProducts().catch((err) => {
+  console.error("❌ Migration failed:", err);
+  process.exit(1);
+});

@@ -4,140 +4,239 @@ const router = express.Router();
 
 const { Product } = require("../db");
 const { authMiddleware, adminOnly } = require("../auth");
-const { getCache, setCache, delCache } = require("../services/cache");
+const {
+  getCache,
+  setCache,
+  delCache,
+  delCacheByNamespace,
+} = require("../services/cache");
 
 /***********************************************************************
  *  PRODUCTS CRUD (ADMIN + SEARCH)
  ***********************************************************************/
 router.get("/api/products/home", async (req, res) => {
   try {
-    const LIMIT = 3000;
-    const cacheKey = "products:home:v2";
+    const limit = Math.min(parseInt(req.query.limit) || 24, 50);
+    const cacheKey = `products:home:v3:${limit}`;
 
     const cached = await getCache(cacheKey);
     if (cached) return res.json(cached);
 
-    // 🔹 Common projection (adjust fields as needed)
-    const projection = {
-      title: 1,
-      price: 1,
-      images: 1,
-      featured: 1,
-      featuredOrder: 1,
-      priceUpdatedAt: 1,
-      createdAt: 1,
-      category: 1,
-    };
-
-    // 🔹 Fetch featured first
-    const featuredPromise = Product.find({ featured: true })
-      .select(projection)
+    const products = await Product.find({
+      isActive: true,
+      stock: { $gt: 0 },
+    })
+      .select({
+        title: 1,
+        price: 1,
+        images: 1,
+        featured: 1,
+        featuredOrder: 1,
+        isFlashDeal: 1,
+        flashDeal: 1,
+        category: 1,
+      })
       .populate("category", "name slug")
-      .sort({ featuredOrder: 1 })
-      .limit(2000)
+      .sort({
+        featured: -1,
+        featuredOrder: 1,
+        isFlashDeal: -1,
+        stock: -1,
+        createdAt: -1,
+      })
+      .limit(limit)
       .lean();
 
-    const featured = await featuredPromise;
-    const featuredIds = featured.map((p) => p._id);
-
-    const remaining = LIMIT - featured.length;
-
-    let latest = [];
-    if (remaining > 0) {
-      latest = await Product.find({ _id: { $nin: featuredIds } })
-        .select(projection)
-        .populate("category", "name slug")
-        .sort({ priceUpdatedAt: -1, createdAt: -1 })
-        .limit(remaining)
-        .lean();
-    }
-
-    const result = [...featured, ...latest];
-
-    await setCache(cacheKey, result, 600); // 10 min cache
-    res.json(result);
+    await setCache(cacheKey, products, 600, "products:home");
+    res.json(products);
   } catch (err) {
     console.error("Home products error:", err);
     res.status(500).json({ message: "Failed to load home products" });
   }
 });
 
+/***********************************************************************
+ *  FLASH DEAL UPDATE (ADMIN)
+ ***********************************************************************/
+router.put(
+  "/api/products/:id/flash-deal",
+  authMiddleware,
+  adminOnly,
+  async (req, res) => {
+    try {
+      const { enabled, discountPercent, startAt, endAt } = req.body;
+
+      if (enabled) {
+        if (!discountPercent || discountPercent <= 0 || discountPercent > 90) {
+          return res.status(400).json({ message: "Invalid discount percent" });
+        }
+
+        if (!startAt || !endAt) {
+          return res
+            .status(400)
+            .json({ message: "Flash deal start and end required" });
+        }
+
+        if (new Date(startAt) >= new Date(endAt)) {
+          return res
+            .status(400)
+            .json({ message: "End date must be after start date" });
+        }
+      }
+
+      const update = enabled
+        ? {
+            isFlashDeal: true,
+            flashDeal: {
+              discountPercent,
+              startAt: new Date(startAt),
+              endAt: new Date(endAt),
+            },
+          }
+        : {
+            isFlashDeal: false,
+            flashDeal: null,
+          };
+
+      const product = await Product.findByIdAndUpdate(req.params.id, update, {
+        new: true,
+      }).populate("category");
+
+      if (!product) {
+        return res.status(404).json({ message: "Product not found" });
+      }
+
+      // 🔥 Clear caches
+      await delCache("products:home");
+      await delCache("products:list:all");
+
+      // Optional real-time update
+      req.io?.emit("product:flash-deal-updated", product);
+
+      res.json(product);
+    } catch (err) {
+      console.error("Flash deal update error:", err);
+      res.status(500).json({ message: "Failed to update flash deal" });
+    }
+  }
+);
+
+/***********************************************************************
+ *  FLASH DEAL PRODUCTS (PUBLIC)
+ ***********************************************************************/
+router.get("/api/products/flash-deals", async (req, res) => {
+  try {
+    const now = new Date();
+
+    const products = await Product.find({
+      isFlashDeal: true,
+      isActive: true,
+      stock: { $gt: 0 },
+      "flashDeal.startAt": { $lte: now },
+      "flashDeal.endAt": { $gte: now },
+    })
+      .populate("category", "name")
+      .sort({ "flashDeal.endAt": 1 })
+      .lean();
+
+    res.json(products);
+  } catch (err) {
+    console.error("Flash deals fetch error:", err);
+    res.status(500).json({ message: "Failed to load flash deals" });
+  }
+});
+
 router.get("/api/products", async (req, res) => {
   try {
-    const { search } = req.query;
-    const cacheKey = `products:list:${search || "all"}`;
-    await delCache("products:list:all"); // temp clear all cache to avoid stale data
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.min(parseInt(req.query.limit) || 24, 50);
+    const skip = (page - 1) * limit;
+
+    const {
+      search,
+      category,
+      featured,
+      flash,
+      inStock,
+      active = "true",
+    } = req.query;
+
+    const query = {};
+
+    if (active === "true") query.isActive = true;
+    if (inStock === "true") query.stock = { $gt: 0 };
+    if (featured === "true") query.featured = true;
+    if (flash === "true") query.isFlashDeal = true;
+    if (category) query.category = category;
+
+    if (search) {
+      query.$or = [{ title: { $regex: search, $options: "i" } }];
+    }
+
+    const cacheKey = `products:list:v3:${JSON.stringify({
+      page,
+      limit,
+      query,
+    })}`;
 
     const cached = await getCache(cacheKey);
     if (cached) return res.json(cached);
 
-    const projection = {
-      title: 1,
-      description: 1,
-      price: 1,
-      stock: 1,
-      images: 1,
-      featured: 1,
-      featuredOrder: 1,
-      createdAt: 1,
-      priceUpdatedAt: 1,
-      category: 1,
+    const [products, total] = await Promise.all([
+      Product.find(query)
+        .select({
+          title: 1,
+          price: 1,
+          stock: 1,
+          images: 1,
+          featured: 1,
+          featuredOrder: 1,
+          isFlashDeal: 1,
+          flashDeal: 1,
+          category: 1,
+          createdAt: 1,
+        })
+        .populate("category", "name")
+        .sort({
+          featured: -1,
+          featuredOrder: 1,
+          isFlashDeal: -1,
+          stock: -1,
+          createdAt: -1,
+        })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+
+      Product.countDocuments(query),
+    ]);
+
+    const response = {
+      data: products,
+      meta: {
+        total,
+        page,
+        pages: Math.ceil(total / limit),
+        hasMore: skip + products.length < total,
+      },
     };
 
-    /** ---------------------------
-     * Build search query
-     * -------------------------- */
-    let searchQuery = {};
-    if (search) {
-      const regex = new RegExp(search, "i");
-      searchQuery = {
-        $or: [{ title: regex }, { description: regex }],
-      };
-    }
-
-    /** ---------------------------
-     * 1️⃣ Featured first
-     * -------------------------- */
-    const featured = await Product.find({
-      ...searchQuery,
-      featured: true,
-    })
-      .select(projection)
-      .populate("category")
-      .sort({ featuredOrder: 1 })
-      .lean();
-
-    const featuredIds = featured.map((p) => p._id);
-
-    /** ---------------------------
-     * 2️⃣ Remaining products
-     * -------------------------- */
-    const rest = await Product.find({
-      ...searchQuery,
-      _id: { $nin: featuredIds },
-    })
-      .select(projection)
-      .populate("category")
-      .sort({ priceUpdatedAt: -1, createdAt: -1 })
-      .lean();
-
-    const result = [...featured, ...rest];
-
-    await setCache(cacheKey, result, 600); // 10 min cache
-    res.json(result);
+    await setCache(cacheKey, response, 600, "products:list");
+    res.json(response);
   } catch (err) {
     console.error("Products list error:", err);
     res.status(500).json({ message: "Failed to load products" });
   }
 });
 
-
 router.post("/api/products", authMiddleware, adminOnly, async (req, res) => {
   try {
     const product = await Product.create(req.body);
     const populated = await Product.findById(product._id).populate("category");
-    await delCache("products:list:all");
-    await delCache("products:home");
+    await Promise.all([
+      delCacheByNamespace("products:home"),
+      delCacheByNamespace("products:list"),
+    ]);
 
     req.io.emit("product:created", populated);
     res.status(201).json(populated);
@@ -157,8 +256,11 @@ router.put("/api/products/:id", authMiddleware, adminOnly, async (req, res) => {
   });
 
   if (!product) return res.status(404).json({ message: "Product not found" });
-  await delCache("products:list:all");
-  await delCache("products:home");
+  await Promise.all([
+    delCacheByNamespace("products:home"),
+    delCacheByNamespace("products:list"),
+  ]);
+
   res.json(product);
 });
 
@@ -173,8 +275,6 @@ router.delete(
     res.json({ message: "Deleted" });
   }
 );
-
-
 
 // GET /api/products/paginated?page=1&limit=20
 /***********************************************************************
@@ -238,7 +338,6 @@ router.get("/api/products/:id", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
-
 
 /***********************************************************************
  *  HOME PRODUCTS (TOP 20)

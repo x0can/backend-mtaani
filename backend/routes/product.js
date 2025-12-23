@@ -14,68 +14,121 @@ const {
 /***********************************************************************
  *  PRODUCTS CRUD (ADMIN + SEARCH)
  ***********************************************************************/
+// router.get("/api/products/home", async (req, res) => {
+//   try {
+//     const page = Math.max(Number(req.query.page) || 1, 1);
+//     const limit = Math.min(Number(req.query.limit) || 20, 50);
+
+//     // how many pages to batch in one request
+//     const batchPages = Math.min(Number(req.query.batchPages) || 1, 3000);
+
+//     const skip = (page - 1) * limit;
+//     const batchLimit = limit * batchPages;
+
+//     const query = {
+//       deleted: { $ne: true },
+//       $or: [{ isActive: true }, { isActive: { $exists: false } }],
+//       $or: [{ stock: { $gt: 0 } }, { stock: { $exists: false } }],
+//     };
+
+//     const [products, total] = await Promise.all([
+//       Product.find(query)
+//         .select({
+//           title: 1,
+//           price: 1,
+//           images: 1,
+//           featured: 1,
+//           featuredOrder: 1,
+//           isFlashDeal: 1,
+//           category: 1,
+//           discount: 1,
+//           stock: 1,
+//           createdAt: 1,
+//         })
+//         .populate("category", "name slug")
+//         .sort({
+//           featured: -1,
+//           featuredOrder: 1,
+//           isFlashDeal: -1,
+//           createdAt: -1,
+//           _id: 1, // stable sort (IMPORTANT)
+//         })
+//         .skip(skip)
+//         .limit(batchLimit)
+//         .lean(),
+
+//       Product.countDocuments(query),
+//     ]);
+
+//     const nextPage = page + batchPages;
+//     const hasMore = skip + products.length < total;
+
+//     res.json({
+//       data: products,
+//       meta: {
+//         page,
+//         limit,
+//         batchPages,
+//         nextPage,
+//         total,
+//         hasMore,
+//       },
+//     });
+//   } catch (err) {
+//     console.error("❌ Home products error:", err);
+//     res.status(500).json({ message: "Failed to load home products" });
+//   }
+// });
+
 router.get("/api/products/home", async (req, res) => {
   try {
-    const page = Math.max(Number(req.query.page) || 1, 1);
-    const limit = Math.min(Number(req.query.limit) || 20, 50);
+    const LIMIT = 3000;
+    const cacheKey = "products:home:v2";
 
-    // how many pages to batch in one request
-    const batchPages = Math.min(Number(req.query.batchPages) || 1, 3000);
+    const cached = await getCache(cacheKey);
+    if (cached) return res.json(cached);
 
-    const skip = (page - 1) * limit;
-    const batchLimit = limit * batchPages;
-
-    const query = {
-      deleted: { $ne: true },
-      $or: [{ isActive: true }, { isActive: { $exists: false } }],
-      $or: [{ stock: { $gt: 0 } }, { stock: { $exists: false } }],
+    // 🔹 Common projection (adjust fields as needed)
+    const projection = {
+      title: 1,
+      price: 1,
+      images: 1,
+      featured: 1,
+      featuredOrder: 1,
+      priceUpdatedAt: 1,
+      createdAt: 1,
+      category: 1,
     };
 
-    const [products, total] = await Promise.all([
-      Product.find(query)
-        .select({
-          title: 1,
-          price: 1,
-          images: 1,
-          featured: 1,
-          featuredOrder: 1,
-          isFlashDeal: 1,
-          category: 1,
-          discount: 1,
-          stock: 1,
-          createdAt: 1,
-        })
+    // 🔹 Fetch featured first
+    const featuredPromise = Product.find({ featured: true })
+      .select(projection)
+      .populate("category", "name slug")
+      .sort({ featuredOrder: 1 })
+      .limit(2000)
+      .lean();
+
+    const featured = await featuredPromise;
+    const featuredIds = featured.map((p) => p._id);
+
+    const remaining = LIMIT - featured.length;
+
+    let latest = [];
+    if (remaining > 0) {
+      latest = await Product.find({ _id: { $nin: featuredIds } })
+        .select(projection)
         .populate("category", "name slug")
-        .sort({
-          featured: -1,
-          featuredOrder: 1,
-          isFlashDeal: -1,
-          createdAt: -1,
-          _id: 1, // stable sort (IMPORTANT)
-        })
-        .skip(skip)
-        .limit(batchLimit)
-        .lean(),
+        .sort({ priceUpdatedAt: -1, createdAt: -1 })
+        .limit(remaining)
+        .lean();
+    }
 
-      Product.countDocuments(query),
-    ]);
+    const result = [...featured, ...latest];
 
-    const nextPage = page + batchPages;
-    const hasMore = skip + products.length < total;
-
-    res.json({
-      data: products,
-      meta: {
-        page,
-        limit,
-        batchPages,
-        nextPage,
-        total,
-        hasMore,
-      },
-    });
+    await setCache(cacheKey, result, 600); // 10 min cache
+    res.json(result);
   } catch (err) {
-    console.error("❌ Home products error:", err);
+    console.error("Home products error:", err);
     res.status(500).json({ message: "Failed to load home products" });
   }
 });

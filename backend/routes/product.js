@@ -20,7 +20,7 @@ router.get("/api/products/home", async (req, res) => {
     const limit = Math.min(Number(req.query.limit) || 20, 50);
 
     // how many pages to batch in one request
-    const batchPages = Math.min(Number(req.query.batchPages) || 1, 5);
+    const batchPages = Math.min(Number(req.query.batchPages) || 1, 3000);
 
     const skip = (page - 1) * limit;
     const batchLimit = limit * batchPages;

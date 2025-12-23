@@ -16,41 +16,66 @@ const {
  ***********************************************************************/
 router.get("/api/products/home", async (req, res) => {
   try {
-    const limit = Math.min(parseInt(req.query.limit) || 24, 50);
-    const cacheKey = `products:home:v3:${limit}`;
+    const page = Math.max(Number(req.query.page) || 1, 1);
+    const limit = Math.min(Number(req.query.limit) || 20, 50);
 
-    const cached = await getCache(cacheKey);
-    if (cached) return res.json(cached);
+    // how many pages to batch in one request
+    const batchPages = Math.min(Number(req.query.batchPages) || 1, 5);
 
-    const products = await Product.find({
-      isActive: true,
-      stock: { $gt: 0 },
-    })
-      .select({
-        title: 1,
-        price: 1,
-        images: 1,
-        featured: 1,
-        featuredOrder: 1,
-        isFlashDeal: 1,
-        flashDeal: 1,
-        category: 1,
-      })
-      .populate("category", "name slug")
-      .sort({
-        featured: -1,
-        featuredOrder: 1,
-        isFlashDeal: -1,
-        stock: -1,
-        createdAt: -1,
-      })
-      .limit(limit)
-      .lean();
+    const skip = (page - 1) * limit;
+    const batchLimit = limit * batchPages;
 
-    await setCache(cacheKey, products, 600, "products:home");
-    res.json(products);
+    const query = {
+      deleted: { $ne: true },
+      $or: [{ isActive: true }, { isActive: { $exists: false } }],
+      $or: [{ stock: { $gt: 0 } }, { stock: { $exists: false } }],
+    };
+
+    const [products, total] = await Promise.all([
+      Product.find(query)
+        .select({
+          title: 1,
+          price: 1,
+          images: 1,
+          featured: 1,
+          featuredOrder: 1,
+          isFlashDeal: 1,
+          category: 1,
+          discount: 1,
+          stock: 1,
+          createdAt: 1,
+        })
+        .populate("category", "name slug")
+        .sort({
+          featured: -1,
+          featuredOrder: 1,
+          isFlashDeal: -1,
+          createdAt: -1,
+          _id: 1, // stable sort (IMPORTANT)
+        })
+        .skip(skip)
+        .limit(batchLimit)
+        .lean(),
+
+      Product.countDocuments(query),
+    ]);
+
+    const nextPage = page + batchPages;
+    const hasMore = skip + products.length < total;
+
+    res.json({
+      data: products,
+      meta: {
+        page,
+        limit,
+        batchPages,
+        nextPage,
+        total,
+        hasMore,
+      },
+    });
   } catch (err) {
-    console.error("Home products error:", err);
+    console.error("❌ Home products error:", err);
     res.status(500).json({ message: "Failed to load home products" });
   }
 });
@@ -176,7 +201,13 @@ router.get("/api/products", async (req, res) => {
     const cacheKey = `products:list:v3:${JSON.stringify({
       page,
       limit,
-      query,
+      search,
+      category,
+      featured,
+      flash,
+      inStock,
+      active,
+      sort: req.query.sort,
     })}`;
 
     const cached = await getCache(cacheKey);

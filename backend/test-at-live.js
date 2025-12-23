@@ -1,87 +1,62 @@
 /* eslint-disable no-console */
 require("dotenv").config();
 const mongoose = require("mongoose");
+
+// ⚠️ adjust path if needed
 const { Product } = require("./db");
 
 const MONGO_URI = "mongodb+srv://xocan:waveLike8ese@cluster0.d56yh2c.mongodb.net/"
 
-async function migrateProducts() {
-  console.log("🔌 Connecting to MongoDB...");
-  await mongoose.connect(MONGO_URI);
+async function run() {
+  try {
+    console.log("🔌 Connecting to MongoDB...");
+    await mongoose.connect(MONGO_URI);
 
-  console.log("🚀 Starting product migration...");
+    console.log("✅ Connected");
 
-  const updates = {
-    // add missing flags safely
-    isActive: true,
-    isFlashDeal: false,
-    lowStockThreshold: 5,
-  };
-
-  /* --------------------------------------------------
-     1️⃣ Add missing simple fields
-  -------------------------------------------------- */
-  const baseResult = await Product.updateMany(
-    {
+    // 🔍 Count affected products first
+    const before = await Product.countDocuments({
       $or: [
-        { isActive: { $exists: false } },
-        { isFlashDeal: { $exists: false } },
-        { lowStockThreshold: { $exists: false } },
+        { stock: { $exists: false } },
+        { stock: { $lte: 0 } },
       ],
-    },
-    {
-      $set: updates,
+    });
+
+    console.log(`📦 Products with stock <= 0: ${before}`);
+
+    if (before === 0) {
+      console.log("🎉 Nothing to update. Exiting.");
+      process.exit(0);
     }
-  );
 
-  console.log(
-    `✅ Base fields updated: ${baseResult.modifiedCount}`
-  );
-
-  /* --------------------------------------------------
-     2️⃣ Normalize flashDeal
-  -------------------------------------------------- */
-  const flashResult = await Product.updateMany(
-    {
-      isFlashDeal: true,
-      flashDeal: { $exists: false },
-    },
-    {
-      $set: { flashDeal: null },
-    }
-  );
-
-  console.log(
-    `🔥 Flash deal normalized: ${flashResult.modifiedCount}`
-  );
-
-  /* --------------------------------------------------
-     3️⃣ Normalize featured fields
-  -------------------------------------------------- */
-  const featuredResult = await Product.updateMany(
-    {
-      featured: { $exists: false },
-    },
-    {
-      $set: {
-        featured: false,
-        featuredOrder: null,
+    // 🚀 Update
+    const res = await Product.updateMany(
+      {
+        $or: [
+          { stock: { $exists: false } },
+          { stock: { $lte: 0 } },
+        ],
       },
-    }
-  );
+      {
+        $set: { stock: 100 },
+      }
+    );
 
-  console.log(
-    `⭐ Featured fields normalized: ${featuredResult.modifiedCount}`
-  );
+    console.log(`🛠 Updated ${res.modifiedCount} products`);
 
-  console.log("🎉 Product migration completed successfully");
-  process.exit(0);
+    // ✅ Verify
+    const after = await Product.countDocuments({
+      stock: { $lte: 0 },
+    });
+
+    console.log(`🔎 Remaining stock <= 0: ${after}`);
+    console.log("✅ Migration completed successfully");
+
+    process.exit(0);
+  } catch (err) {
+    console.error("❌ Migration failed:", err);
+    process.exit(1);
+  }
 }
 
-/* --------------------------------------------------
-   Run
--------------------------------------------------- */
-migrateProducts().catch((err) => {
-  console.error("❌ Migration failed:", err);
-  process.exit(1);
-});
+run();

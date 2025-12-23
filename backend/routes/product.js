@@ -81,6 +81,46 @@ router.get("/api/products/home", async (req, res) => {
 });
 
 /***********************************************************************
+ *  ALL PRODUCTS (NO PAGINATION)
+ *  GET /api/products/all
+ *  RETURNS { data: [] }
+ ***********************************************************************/
+router.get("/api/products/all", async (req, res) => {
+  try {
+    const products = await Product.find({
+      deleted: { $ne: true },
+      $or: [{ isActive: true }, { isActive: { $exists: false } }],
+    })
+      .select({
+        title: 1,
+        price: 1,
+        images: 1,
+        featured: 1,
+        featuredOrder: 1,
+        isFlashDeal: 1,
+        category: 1,
+        discount: 1,
+        stock: 1,
+        createdAt: 1,
+      })
+      .populate("category", "name slug")
+      .sort({
+        featured: -1,
+        featuredOrder: 1,
+        isFlashDeal: -1,
+        createdAt: -1,
+        _id: 1,
+      })
+      .lean();
+
+    res.json({ data: products });
+  } catch (err) {
+    console.error("❌ Fetch all products error:", err);
+    res.status(500).json({ data: [] });
+  }
+});
+
+/***********************************************************************
  *  FLASH DEAL UPDATE (ADMIN)
  ***********************************************************************/
 router.put(

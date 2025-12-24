@@ -90,14 +90,17 @@ router.get("/api/products/home", async (req, res) => {
 
     // 🔹 Common projection (adjust fields as needed)
     const projection = {
-      title: 1,
-      price: 1,
-      images: 1,
-      featured: 1,
-      featuredOrder: 1,
-      priceUpdatedAt: 1,
-      createdAt: 1,
-      category: 1,
+          title: 1,
+          price: 1,
+          images: 1,
+          featured: 1,
+          featuredOrder: 1,
+          isFlashDeal: 1,
+          category: 1,
+          priceUpdatedAt: 1,
+          discount: 1,
+          stock: 1,
+          createdAt: 1
     };
 
     // 🔹 Fetch featured first

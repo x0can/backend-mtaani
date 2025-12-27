@@ -13,6 +13,8 @@ const {
 
 const EVENTS = require("../events/productEvents");
 
+const updateFlashDeal = require("../handlers/flashDeal");
+
 /***********************************************************************
  *  PRODUCTS CRUD (ADMIN + SEARCH)
  ***********************************************************************/
@@ -160,7 +162,7 @@ router.get("/api/products/home", async (req, res) => {
       },
     };
 
-    await setCache(cacheKey, payload, 300); // 5 min cache
+    await setCache(cacheKey, payload, 300, "products:home");
     res.json(payload);
   } catch (err) {
     console.error("Home products error:", err);
@@ -168,14 +170,13 @@ router.get("/api/products/home", async (req, res) => {
   }
 });
 
-
 router.get("/api/products/search", async (req, res) => {
   try {
     const q = (req.query.q || "").trim();
     const limit = Math.min(parseInt(req.query.limit || "6", 10), 20);
     const category = req.query.category || null;
 
-    if (q.length < 2) return res.json([]);
+    if (q.length < 2 && !category) return res.json([]);
 
     const cacheKey = `products:search:v1:${q.toLowerCase()}:${
       category || "all"
@@ -280,107 +281,129 @@ router.get("/api/products/all", async (req, res) => {
 /***********************************************************************
  *  FLASH DEAL UPDATE (ADMIN)
  ***********************************************************************/
+// router.put(
+//   "/api/products/:id/flash-deal",
+//   authMiddleware,
+//   adminOnly,
+//   async (req, res) => {
+//     try {
+//       const { enabled, discountPercent, startAt, endAt } = req.body;
+
+//       /* =========================
+//          VALIDATION
+//       ========================= */
+//       if (enabled) {
+//         const discount = Number(discountPercent);
+
+//         if (!Number.isFinite(discount) || discount <= 0 || discount > 90) {
+//           return res.status(400).json({
+//             message: "Discount percent must be between 1 and 90",
+//           });
+//         }
+
+//         if (!startAt || !endAt) {
+//           return res.status(400).json({
+//             message: "Flash deal start and end dates are required",
+//           });
+//         }
+
+//         const start = new Date(startAt);
+//         const end = new Date(endAt);
+
+//         if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+//           return res.status(400).json({
+//             message: "Invalid date format",
+//           });
+//         }
+
+//         if (start >= end) {
+//           return res.status(400).json({
+//             message: "End date must be after start date",
+//           });
+//         }
+//       }
+
+//       /* =========================
+//          UPDATE PAYLOAD
+//       ========================= */
+//       const update = enabled
+//         ? {
+//             isFlashDeal: true,
+//             priceUpdatedAt: new Date(), // 🔥 forces resort in cached lists
+//             flashDeal: {
+//               discountPercent: Number(discountPercent),
+//               startAt: new Date(startAt),
+//               endAt: new Date(endAt),
+//             },
+//           }
+//         : {
+//             isFlashDeal: false,
+//             priceUpdatedAt: new Date(), // 🔥 forces resort
+//             flashDeal: null,
+//           };
+
+//       /* =========================
+//          DB UPDATE
+//       ========================= */
+//       const product = await Product.findByIdAndUpdate(req.params.id, update, {
+//         new: true,
+//       }).populate("category");
+
+//       if (!product) {
+//         return res.status(404).json({ message: "Product not found" });
+//       }
+
+//       /* =========================
+//          CACHE INVALIDATION (CRITICAL)
+//       ========================= */
+//       await Promise.all([
+//         delCacheByNamespace("products:home"),
+//         delCacheByNamespace("products:list"), // 🔥 THIS FIXES THE BUG
+//       ]);
+
+//       /* =========================
+//          REAL-TIME EVENT (OPTIONAL)
+//       ========================= */
+//       if (req.io) {
+//         req.io.emit("product:flash-deal-updated", {
+//           productId: product._id,
+//           isFlashDeal: product.isFlashDeal,
+//           flashDeal: product.flashDeal,
+//         });
+//       }
+
+//       res.json(product);
+//     } catch (err) {
+//       console.error("❌ Flash deal update error:", err);
+//       res.status(500).json({
+//         message: "Failed to update flash deal",
+//       });
+//     }
+//   }
+// );
+
 router.put(
   "/api/products/:id/flash-deal",
   authMiddleware,
   adminOnly,
   async (req, res) => {
     try {
-      const { enabled, discountPercent, startAt, endAt } = req.body;
+      const product = await updateFlashDeal({
+        productId: req.params.id,
+        payload: req.body,
+        emit: req.emitProductEvent,
+      });
 
-      /* =========================
-         VALIDATION
-      ========================= */
-      if (enabled) {
-        const discount = Number(discountPercent);
-
-        if (!Number.isFinite(discount) || discount <= 0 || discount > 90) {
-          return res.status(400).json({
-            message: "Discount percent must be between 1 and 90",
-          });
-        }
-
-        if (!startAt || !endAt) {
-          return res.status(400).json({
-            message: "Flash deal start and end dates are required",
-          });
-        }
-
-        const start = new Date(startAt);
-        const end = new Date(endAt);
-
-        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-          return res.status(400).json({
-            message: "Invalid date format",
-          });
-        }
-
-        if (start >= end) {
-          return res.status(400).json({
-            message: "End date must be after start date",
-          });
-        }
-      }
-
-      /* =========================
-         UPDATE PAYLOAD
-      ========================= */
-      const update = enabled
-        ? {
-            isFlashDeal: true,
-            priceUpdatedAt: new Date(), // 🔥 forces resort in cached lists
-            flashDeal: {
-              discountPercent: Number(discountPercent),
-              startAt: new Date(startAt),
-              endAt: new Date(endAt),
-            },
-          }
-        : {
-            isFlashDeal: false,
-            priceUpdatedAt: new Date(), // 🔥 forces resort
-            flashDeal: null,
-          };
-
-      /* =========================
-         DB UPDATE
-      ========================= */
-      const product = await Product.findByIdAndUpdate(req.params.id, update, {
-        new: true,
-      }).populate("category");
-
-      if (!product) {
-        return res.status(404).json({ message: "Product not found" });
-      }
-
-      /* =========================
-         CACHE INVALIDATION (CRITICAL)
-      ========================= */
-      await Promise.all([
-        delCacheByNamespace("products:home"),
-        delCacheByNamespace("products:list"), // 🔥 THIS FIXES THE BUG
-      ]);
-
-      /* =========================
-         REAL-TIME EVENT (OPTIONAL)
-      ========================= */
-      if (req.io) {
-        req.io.emit("product:flash-deal-updated", {
-          productId: product._id,
-          isFlashDeal: product.isFlashDeal,
-          flashDeal: product.flashDeal,
-        });
-      }
+      await req.emitProductEvent(EVENTS.PRODUCT_FLASH_UPDATED, {
+        updatedAt: new Date(),
+      });
 
       res.json(product);
     } catch (err) {
-      console.error("❌ Flash deal update error:", err);
-      res.status(500).json({
-        message: "Failed to update flash deal",
-      });
+      res.status(400).json({ message: err.message });
     }
   }
 );
-
 /***********************************************************************
  *  FLASH DEAL PRODUCTS (PUBLIC)
  ***********************************************************************/
@@ -398,12 +421,6 @@ router.get("/api/products/flash-deals", async (req, res) => {
       .populate("category", "name")
       .sort({ "flashDeal.endAt": 1 })
       .lean();
-    await req.emitProductEvent(EVENTS.PRODUCT_FLASH_DEAL_UPDATED, {
-      productId: product._id,
-      isFlashDeal: product.isFlashDeal,
-      flashDeal: product.flashDeal,
-      updatedAt: new Date(),
-    });
 
     res.json(products);
   } catch (err) {
@@ -440,16 +457,10 @@ router.put(
           featuredOrder: item.order,
         });
       }
-      // AFTER DB updates
-      await Promise.all([
-        delCacheByNamespace("products:home"),
-        delCacheByNamespace("products:list"),
-      ]);
 
       await req.emitProductEvent(EVENTS.PRODUCT_FEATURED_UPDATED, {
         updatedAt: new Date(),
       });
-      console.log("✅ FEATURED EVENT EMITTED");
 
       res.json({ success: true });
     } catch (err) {
@@ -552,12 +563,12 @@ router.post("/api/products", authMiddleware, adminOnly, async (req, res) => {
   try {
     const product = await Product.create(req.body);
     const populated = await Product.findById(product._id).populate("category");
-    await Promise.all([
-      delCacheByNamespace("products:home"),
-      delCacheByNamespace("products:list"),
-    ]);
 
-    req.io.emit("product:created", populated);
+    await req.emitProductEvent(EVENTS.PRODUCT_CREATED, {
+      productId: populated._id,
+      category: populated.category?._id,
+    });
+
     res.status(201).json(populated);
   } catch (err) {
     console.error("Create product failed:", err);
@@ -575,10 +586,9 @@ router.put("/api/products/:id", authMiddleware, adminOnly, async (req, res) => {
   });
 
   if (!product) return res.status(404).json({ message: "Product not found" });
-  await Promise.all([
-    delCacheByNamespace("products:home"),
-    delCacheByNamespace("products:list"),
-  ]);
+  await req.emitProductEvent(EVENTS.PRODUCT_UPDATED, {
+    productId: product._id,
+  });
 
   res.json(product);
 });
@@ -590,6 +600,10 @@ router.delete(
   async (req, res) => {
     const product = await Product.findByIdAndDelete(req.params.id);
     if (!product) return res.status(404).json({ message: "Product not found" });
+
+    await req.emitProductEvent(EVENTS.PRODUCT_DELETED, {
+      productId: product._id,
+    });
 
     res.json({ message: "Deleted" });
   }

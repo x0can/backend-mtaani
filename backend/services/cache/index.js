@@ -1,4 +1,6 @@
 const { Redis } = require("@upstash/redis");
+const cacheEvents = require("./events");
+const { publishCacheEvent } = require("./stream");
 
 const redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL,
@@ -25,6 +27,9 @@ const getCache = async (key) => {
 const setCache = async (key, value, ttl = 300, namespace = "default") => {
   await redis.set(key, value, { ex: ttl });
   await trackKey(namespace, key);
+
+  // 🔔 emit
+  await publishCacheEvent("cache.set", { key, namespace, ttl });
 };
 
 /**
@@ -32,6 +37,8 @@ const setCache = async (key, value, ttl = 300, namespace = "default") => {
  */
 const delCache = async (key) => {
   await redis.del(key);
+
+  await publishCacheEvent("cache.del", { key });
 };
 
 /**
@@ -45,8 +52,12 @@ const delCacheByNamespace = async (namespace) => {
     await redis.del(...keys);
   }
 
-  // cleanup index
   await redis.del(indexKey);
+
+  await publishCacheEvent("cache.namespace.clear", {
+    namespace,
+    count: keys?.length || 0,
+  });
 };
 
 module.exports = {

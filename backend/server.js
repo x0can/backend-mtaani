@@ -1,5 +1,6 @@
 // server.js
 require("dotenv").config();
+require("./services/subscribers/logger");
 
 const express = require("express");
 const mongoose = require("mongoose");
@@ -12,9 +13,9 @@ const path = require("path");
 const routes = require("./routes/index");
 const { startPresenceMonitor } = require("./services/presenceService");
 const { User, Order } = require("./db");
+const { startCacheWorker } = require("./workers/cacheWorker");
 
 const { handleProductEvent } = require("./services/productEventsBus");
-const EVENTS = require("./events/productEvents");
 
 const app = express();
 
@@ -99,6 +100,10 @@ mongoose
     console.log("✅ MongoDB connected");
     // pass io so presenceService can emit offline events
     startPresenceMonitor(io);
+    // 🔥 Start cache worker (only once)
+    if (process.env.ENABLE_CACHE_WORKER !== "false") {
+      startCacheWorker();
+    }
   })
   .catch((err) => {
     console.error("❌ MongoDB connection error", err);

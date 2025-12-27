@@ -13,6 +13,9 @@ const routes = require("./routes/index");
 const { startPresenceMonitor } = require("./services/presenceService");
 const { User, Order } = require("./db");
 
+const { handleProductEvent } = require("./services/productEventsBus");
+const EVENTS = require("./events/productEvents");
+
 const app = express();
 
 /* ---------------------------------------------------
@@ -79,6 +82,11 @@ app.set("io", io);
 
 app.use((req, res, next) => {
   req.io = io;
+
+  // actorId: ideally from authMiddleware (req.user?.id)
+  req.emitProductEvent = (event, payload) =>
+    handleProductEvent(event, payload, io, req.user?._id);
+
   next();
 });
 
@@ -158,36 +166,35 @@ io.on("connection", (socket) => {
   });
 
   socket.on("customer:locationOrder", async ({ orderId, userId, lat, lng }) => {
-  if (!orderId || !userId) return;
+    if (!orderId || !userId) return;
 
-  const coords = { lat, lng };
+    const coords = { lat, lng };
 
-  // Update user
-  await User.findByIdAndUpdate(userId, {
-    currentLocation: coords,
-    lastSeen: new Date(),
-  });
-
-  // Update the order
-  try {
-    await Order.findByIdAndUpdate(orderId, {
-      customerLocation: coords,
+    // Update user
+    await User.findByIdAndUpdate(userId, {
+      currentLocation: coords,
+      lastSeen: new Date(),
     });
-  } catch (err) {
-    console.log("❌ Failed updating order:", err);
-  }
 
-  // Emit to rider inside that order room
-  io.to(`order:${orderId}`).emit("order:customer-location", {
-    orderId,
-    userId,
-    lat,
-    lng,
+    // Update the order
+    try {
+      await Order.findByIdAndUpdate(orderId, {
+        customerLocation: coords,
+      });
+    } catch (err) {
+      console.log("❌ Failed updating order:", err);
+    }
+
+    // Emit to rider inside that order room
+    io.to(`order:${orderId}`).emit("order:customer-location", {
+      orderId,
+      userId,
+      lat,
+      lng,
+    });
+
+    console.log(`📍 CUSTOMER ORDER LOCATION ${orderId}:`, lat, lng);
   });
-
-  console.log(`📍 CUSTOMER ORDER LOCATION ${orderId}:`, lat, lng);
-});
-
 
   /* ---------------------------
      ❤️ CUSTOMER HEARTBEAT

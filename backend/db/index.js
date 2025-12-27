@@ -152,6 +152,19 @@ ProductSchema.index({ isActive: 1 });
 ProductSchema.index({ featured: 1, featuredOrder: 1 });
 ProductSchema.index({ isFlashDeal: 1 });
 
+const ProductEventLogSchema = new mongoose.Schema(
+  {
+    type: { type: String, required: true },
+    productId: { type: mongoose.Schema.Types.ObjectId, required: false },
+    actorId: { type: mongoose.Schema.Types.ObjectId, required: false }, // admin user
+    payload: { type: Object, default: {} },
+    idempotencyKey: { type: String, required: true, unique: true },
+  },
+  { timestamps: true }
+);
+
+
+
 /* ---- Orders ---- */
 const OrderItemSchema = new mongoose.Schema({
   _id: { type: mongoose.Schema.Types.ObjectId, auto: true }, // 👈 important
@@ -229,9 +242,16 @@ const ProductCategory = mongoose.model(
   "ProductCategory",
   ProductCategorySchema
 );
+
+const ProductEventLog = mongoose.model(
+  "ProductEventLog",
+  ProductEventLogSchema
+);
 module.exports = {
   User,
   Product,
   Order,
   ProductCategory,
+  ProductEventLog,
+
 };

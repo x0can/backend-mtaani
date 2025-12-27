@@ -11,6 +11,8 @@ const {
   delCacheByNamespace,
 } = require("../services/cache");
 
+const EVENTS = require("../events/productEvents");
+
 /***********************************************************************
  *  PRODUCTS CRUD (ADMIN + SEARCH)
  ***********************************************************************/
@@ -80,62 +82,161 @@ const {
 //   }
 // });
 
+// routes/products.js
 router.get("/api/products/home", async (req, res) => {
   try {
-    const LIMIT = 3000;
-    const cacheKey = "products:home:v2";
-
+    const cacheKey = "products:home:v3";
     const cached = await getCache(cacheKey);
     if (cached) return res.json(cached);
 
-    // 🔹 Common projection (adjust fields as needed)
     const projection = {
-          title: 1,
-          price: 1,
-          images: 1,
-          featured: 1,
-          featuredOrder: 1,
-          isFlashDeal: 1,
-          category: 1,
-          priceUpdatedAt: 1,
-          discount: 1,
-          stock: 1,
-          createdAt: 1
+      title: 1,
+      price: 1,
+      images: 1,
+      featured: 1,
+      featuredOrder: 1,
+      isFlashDeal: 1,
+      category: 1,
+      priceUpdatedAt: 1,
+      discount: 1,
+      stock: 1,
+      createdAt: 1,
     };
 
-    // 🔹 Fetch featured first
-    const featuredPromise = Product.find({ featured: true })
-      .select(projection)
-      .populate("category", "name slug")
-      .sort({ featuredOrder: 1 })
-      .limit(2000)
-      .lean();
+    // tune these numbers
+    const HERO_LIMIT = 6;
+    const FLASH_LIMIT = 10;
+    const QUICK_LIMIT = 12;
+    const FEATURED_LIMIT = 24;
+    const NEW_LIMIT = 24;
 
-    const featured = await featuredPromise;
-    const featuredIds = featured.map((p) => p._id);
+    // Query in parallel
+    const [featured, flashDeals, quickPicks, newArrivals] = await Promise.all([
+      Product.find({ featured: true })
+        .select(projection)
+        .populate("category", "name slug")
+        .sort({ featuredOrder: 1, createdAt: -1 })
+        .limit(FEATURED_LIMIT)
+        .lean(),
 
-    const remaining = LIMIT - featured.length;
-
-    let latest = [];
-    if (remaining > 0) {
-      latest = await Product.find({ _id: { $nin: featuredIds } })
+      Product.find({ isFlashDeal: true })
         .select(projection)
         .populate("category", "name slug")
         .sort({ priceUpdatedAt: -1, createdAt: -1 })
-        .limit(remaining)
-        .lean();
-    }
+        .limit(FLASH_LIMIT)
+        .lean(),
 
-    const result = [...featured, ...latest];
+      Product.find({
+        $or: [{ discount: { $gt: 10 } }, { featured: true }],
+      })
+        .select(projection)
+        .populate("category", "name slug")
+        .sort({ discount: -1, priceUpdatedAt: -1, createdAt: -1 })
+        .limit(QUICK_LIMIT)
+        .lean(),
 
-    await setCache(cacheKey, result, 600); // 10 min cache
-    res.json(result);
+      Product.find({})
+        .select(projection)
+        .populate("category", "name slug")
+        .sort({ createdAt: -1 })
+        .limit(NEW_LIMIT)
+        .lean(),
+    ]);
+
+    const hero =
+      featured.length > 0
+        ? featured.slice(0, HERO_LIMIT)
+        : newArrivals.slice(0, HERO_LIMIT);
+
+    const payload = {
+      hero,
+      flashDeals,
+      quickPicks,
+      featured,
+      newArrivals,
+      meta: {
+        version: "v3",
+        generatedAt: new Date().toISOString(),
+      },
+    };
+
+    await setCache(cacheKey, payload, 300); // 5 min cache
+    res.json(payload);
   } catch (err) {
     console.error("Home products error:", err);
     res.status(500).json({ message: "Failed to load home products" });
   }
 });
 
+
+router.get("/api/products/search", async (req, res) => {
+  try {
+    const q = (req.query.q || "").trim();
+    const limit = Math.min(parseInt(req.query.limit || "6", 10), 20);
+    const category = req.query.category || null;
+
+    if (q.length < 2) return res.json([]);
+
+    const cacheKey = `products:search:v1:${q.toLowerCase()}:${
+      category || "all"
+    }:${limit}`;
+    const cached = await getCache(cacheKey);
+    if (cached) return res.json(cached);
+
+    // keep it small (for suggestions)
+    const projection = {
+      title: 1,
+      price: 1,
+      images: 1,
+      discount: 1,
+      stock: 1,
+      category: 1,
+      featured: 1,
+      isFlashDeal: 1,
+    };
+
+    const baseFilter = {};
+    if (category) baseFilter.category = category;
+
+    // Prefer text search if you have an index. Otherwise fallback to regex.
+    let items = [];
+
+    // Attempt text search first (only works if you create a text index)
+    // If you don't want to add index now, you can remove this block.
+    try {
+      items = await Product.find(
+        { ...baseFilter, $text: { $search: q } },
+        { score: { $meta: "textScore" } }
+      )
+        .select(projection)
+        .populate("category", "name slug")
+        .sort({ score: { $meta: "textScore" } })
+        .limit(limit)
+        .lean();
+    } catch {
+      // fallback below
+    }
+
+    if (!items.length) {
+      const safe = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); // escape regex
+      items = await Product.find({
+        ...baseFilter,
+        title: { $regex: safe, $options: "i" },
+      })
+        .select(projection)
+        .populate("category", "name slug")
+        .sort({ featured: -1, updatedAt: -1, createdAt: -1 })
+        .limit(limit)
+        .lean();
+    }
+
+    await setCache(cacheKey, items, 30); // 30s cache is enough
+    res.json(items);
+  } catch (err) {
+    console.error("Search products error:", err);
+    res.status(500).json({ message: "Search failed" });
+  }
+});
 /***********************************************************************
  *  ALL PRODUCTS (NO PAGINATION)
  *  GET /api/products/all
@@ -187,38 +288,62 @@ router.put(
     try {
       const { enabled, discountPercent, startAt, endAt } = req.body;
 
+      /* =========================
+         VALIDATION
+      ========================= */
       if (enabled) {
-        if (!discountPercent || discountPercent <= 0 || discountPercent > 90) {
-          return res.status(400).json({ message: "Invalid discount percent" });
+        const discount = Number(discountPercent);
+
+        if (!Number.isFinite(discount) || discount <= 0 || discount > 90) {
+          return res.status(400).json({
+            message: "Discount percent must be between 1 and 90",
+          });
         }
 
         if (!startAt || !endAt) {
-          return res
-            .status(400)
-            .json({ message: "Flash deal start and end required" });
+          return res.status(400).json({
+            message: "Flash deal start and end dates are required",
+          });
         }
 
-        if (new Date(startAt) >= new Date(endAt)) {
-          return res
-            .status(400)
-            .json({ message: "End date must be after start date" });
+        const start = new Date(startAt);
+        const end = new Date(endAt);
+
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+          return res.status(400).json({
+            message: "Invalid date format",
+          });
+        }
+
+        if (start >= end) {
+          return res.status(400).json({
+            message: "End date must be after start date",
+          });
         }
       }
 
+      /* =========================
+         UPDATE PAYLOAD
+      ========================= */
       const update = enabled
         ? {
             isFlashDeal: true,
+            priceUpdatedAt: new Date(), // 🔥 forces resort in cached lists
             flashDeal: {
-              discountPercent,
+              discountPercent: Number(discountPercent),
               startAt: new Date(startAt),
               endAt: new Date(endAt),
             },
           }
         : {
             isFlashDeal: false,
+            priceUpdatedAt: new Date(), // 🔥 forces resort
             flashDeal: null,
           };
 
+      /* =========================
+         DB UPDATE
+      ========================= */
       const product = await Product.findByIdAndUpdate(req.params.id, update, {
         new: true,
       }).populate("category");
@@ -227,17 +352,31 @@ router.put(
         return res.status(404).json({ message: "Product not found" });
       }
 
-      // 🔥 Clear caches
-      await delCache("products:home");
-      await delCache("products:list:all");
+      /* =========================
+         CACHE INVALIDATION (CRITICAL)
+      ========================= */
+      await Promise.all([
+        delCacheByNamespace("products:home"),
+        delCacheByNamespace("products:list"), // 🔥 THIS FIXES THE BUG
+      ]);
 
-      // Optional real-time update
-      req.io?.emit("product:flash-deal-updated", product);
+      /* =========================
+         REAL-TIME EVENT (OPTIONAL)
+      ========================= */
+      if (req.io) {
+        req.io.emit("product:flash-deal-updated", {
+          productId: product._id,
+          isFlashDeal: product.isFlashDeal,
+          flashDeal: product.flashDeal,
+        });
+      }
 
       res.json(product);
     } catch (err) {
-      console.error("Flash deal update error:", err);
-      res.status(500).json({ message: "Failed to update flash deal" });
+      console.error("❌ Flash deal update error:", err);
+      res.status(500).json({
+        message: "Failed to update flash deal",
+      });
     }
   }
 );
@@ -259,6 +398,12 @@ router.get("/api/products/flash-deals", async (req, res) => {
       .populate("category", "name")
       .sort({ "flashDeal.endAt": 1 })
       .lean();
+    await req.emitProductEvent(EVENTS.PRODUCT_FLASH_DEAL_UPDATED, {
+      productId: product._id,
+      isFlashDeal: product.isFlashDeal,
+      flashDeal: product.flashDeal,
+      updatedAt: new Date(),
+    });
 
     res.json(products);
   } catch (err) {
@@ -266,6 +411,53 @@ router.get("/api/products/flash-deals", async (req, res) => {
     res.status(500).json({ message: "Failed to load flash deals" });
   }
 });
+
+router.put(
+  "/api/admin/products/featured",
+  authMiddleware,
+  adminOnly,
+  async (req, res) => {
+    try {
+      const { products } = req.body;
+      // products = [{ id, order }]
+
+      if (!Array.isArray(products) || products.length > 2000) {
+        return res
+          .status(400)
+          .json({ message: "Maximum of 2000 featured products allowed" });
+      }
+
+      // 1️⃣ Reset all featured flags
+      await Product.updateMany(
+        { featured: true },
+        { featured: false, featuredOrder: null }
+      );
+
+      // 2️⃣ Apply new featured set
+      for (const item of products) {
+        await Product.findByIdAndUpdate(item.id, {
+          featured: true,
+          featuredOrder: item.order,
+        });
+      }
+      // AFTER DB updates
+      await Promise.all([
+        delCacheByNamespace("products:home"),
+        delCacheByNamespace("products:list"),
+      ]);
+
+      await req.emitProductEvent(EVENTS.PRODUCT_FEATURED_UPDATED, {
+        updatedAt: new Date(),
+      });
+      console.log("✅ FEATURED EVENT EMITTED");
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Set featured products error:", err);
+      res.status(500).json({ message: "Failed to update featured products" });
+    }
+  }
+);
 
 router.get("/api/products", async (req, res) => {
   try {

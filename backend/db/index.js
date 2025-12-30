@@ -163,7 +163,39 @@ const ProductEventLogSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+/* ---- Product Interaction ---- */
+const ProductInteractionSchema = new mongoose.Schema(
+  {
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      index: true,
+    },
 
+    product: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+      index: true,
+    },
+
+    type: {
+      type: String,
+      enum: ["view", "add_to_cart", "order", "search_click"],
+      required: true,
+    },
+
+    weight: { type: Number, default: 1 }, // dynamic scoring
+  },
+  { timestamps: true }
+);
+
+ProductInteractionSchema.index({ user: 1, product: 1 });
+ProductInteractionSchema.index({ product: 1, type: 1 });
+
+const ProductInteraction = mongoose.model(
+  "ProductInteraction",
+  ProductInteractionSchema
+);
 
 /* ---- Orders ---- */
 const OrderItemSchema = new mongoose.Schema({
@@ -233,6 +265,43 @@ const OrderSchema = new mongoose.Schema(
 
   { timestamps: true }
 );
+/* ---- Search History ---- */
+const SearchHistorySchema = new mongoose.Schema(
+  {
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      index: true,
+    },
+
+    query: { type: String, index: true },
+
+    matchedProducts: [{ type: mongoose.Schema.Types.ObjectId, ref: "Product" }],
+  },
+  { timestamps: true }
+);
+
+const SearchHistory = mongoose.model("SearchHistory", SearchHistorySchema);
+
+/* ---- Admin Recommendations ---- */
+const AdminRecommendationSchema = new mongoose.Schema(
+  {
+    product: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Product",
+      unique: true,
+    },
+
+    priority: { type: Number, default: 0 }, // higher = stronger push
+    active: { type: Boolean, default: true },
+  },
+  { timestamps: true }
+);
+
+const AdminRecommendation = mongoose.model(
+  "AdminRecommendation",
+  AdminRecommendationSchema
+);
 
 /* ---- Models ---- */
 const User = mongoose.model("User", UserSchema);
@@ -247,11 +316,17 @@ const ProductEventLog = mongoose.model(
   "ProductEventLog",
   ProductEventLogSchema
 );
+
+
+
+
 module.exports = {
   User,
   Product,
   Order,
   ProductCategory,
   ProductEventLog,
-
+  ProductInteraction,
+  SearchHistory,
+  AdminRecommendation
 };

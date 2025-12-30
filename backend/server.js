@@ -115,6 +115,10 @@ mongoose
 --------------------------------------------------- */
 io.on("connection", (socket) => {
   console.log("🔌 socket connected:", socket.id);
+  socket.on("auth", (userId) => {
+    socket.join(`user:${userId}`);
+    console.log("🔐 joined room:", userId);
+  });
 
   /* ---------------------------
      🟢 CUSTOMER ONLINE

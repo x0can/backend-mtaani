@@ -16,14 +16,16 @@ async function alreadyHandled(key) {
 }
 
 async function handleProductEvent(event, payload, io, actorId) {
+  console.log("🔥 BUS RECEIVED:", event, payload); // ✅ ADD THIS
+
   const idempotencyKey = buildIdempotencyKey(event, payload);
   if (await alreadyHandled(idempotencyKey)) return;
 
   try {
     await ProductEventLog.create({
       type: event,
-      productId: payload?.productId,
-      actorId: actorId || null,
+      productId: payload?.productId || null,
+      actorId: actorId || payload?.userId || null,
       payload,
       idempotencyKey,
     });
@@ -34,6 +36,9 @@ async function handleProductEvent(event, payload, io, actorId) {
   }
 
   switch (event) {
+    /* --------------------------------------------------
+       PRODUCT STATE CHANGES (GLOBAL)
+    -------------------------------------------------- */
     case EVENTS.PRODUCT_FLASH_UPDATED:
     case EVENTS.PRODUCT_FEATURED_UPDATED: {
       await Promise.all([
@@ -41,8 +46,22 @@ async function handleProductEvent(event, payload, io, actorId) {
         delCacheByNamespace("products:list"),
       ]);
 
-      // 🔥 EMIT EXACT SAME EVENT NAME
       io.emit(event, payload);
+      break;
+    }
+
+    /* --------------------------------------------------
+       USER INTERACTION (PERSONALIZED)
+    -------------------------------------------------- */
+    case EVENTS.USER_INTERACTION: {
+      const userId = payload?.userId;
+      if (!userId) break;
+
+      // 🔥 ONLY invalidate that user's home cache
+      await redis.del(`products:home:v5:user:${userId}`);
+
+      // 🔥 Emit only to that user (room-based)
+      io.to(`user:${userId}`).emit(event, payload);
       break;
     }
 

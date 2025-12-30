@@ -4,4 +4,5 @@ module.exports = {
   PRODUCT_DELETED: "product.deleted",
   PRODUCT_FLASH_UPDATED: "product.flash.updated",
   PRODUCT_FEATURED_UPDATED: "product.featured.updated",
+  USER_INTERACTION: "product.user.interaction",
 };

@@ -47,11 +47,11 @@ router.get("/api/products/home", authMiddleware, async (req, res) => {
       createdAt: 1,
     };
 
-    const HERO_LIMIT = 6;
-    const FLASH_LIMIT = 10;
+    const HERO_LIMIT = 12;
+    const FLASH_LIMIT = 12;
     const QUICK_LIMIT = 12; // also recommended size
-    const FEATURED_LIMIT = 24;
-    const NEW_LIMIT = 24;
+    const FEATURED_LIMIT = 250;
+    const NEW_LIMIT = 250;
 
     const [featured, flashDeals, quickPicks, newArrivals] = await Promise.all([
       Product.find({ featured: true })
@@ -141,6 +141,7 @@ router.get("/api/products/home", authMiddleware, async (req, res) => {
   }
 });
 
+// TODO: set higher limit due to 1000's of results
 router.get("/api/products/search", async (req, res) => {
   try {
     const q = (req.query.q || "").trim();

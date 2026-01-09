@@ -1,42 +1,40 @@
 const { User } = require("../db");
 const { generateOtp, hashOtp } = require("../utils/otp");
-const { sendSms } = require("../services/sms");
+const { sendOtp: sendWhatsAppOtp } = require("../services/whatsapp");
 
+/**
+ * Normalize Kenyan phone → +2547XXXXXXXX
+ */
 const normalizeKenyanPhone = (phone) => {
   if (!phone) return null;
 
   let p = phone.replace(/\s+/g, "");
 
-  if (p.startsWith("0")) {
-    p = "+254" + p.slice(1);
-  }
+  if (p.startsWith("0")) p = "+254" + p.slice(1);
+  if (p.startsWith("254")) p = "+" + p;
 
-  if (p.startsWith("254")) {
-    p = "+" + p;
-  }
-
-  if (!p.startsWith("+254")) {
-    return null;
-  }
-
+  if (!p.startsWith("+254")) return null;
   return p;
 };
 
-/* ---------------- SEND OTP ---------------- */
+/* =====================================================
+   SEND PHONE OTP (WhatsApp ONLY)
+===================================================== */
 exports.sendPhoneOtp = async (req, res) => {
   try {
     const userId = req.user.id;
-
     const user = await User.findById(userId);
+
     if (!user || !user.phone) {
       return res.status(400).json({ message: "Phone number not found" });
     }
 
+    // already verified
     if (user.verified) {
       return res.json({ message: "Phone already verified" });
     }
 
-    // ⏱ Rate limit: 30s
+    // ⏱ Rate limit: 30 seconds
     if (
       user.phoneOtpLastSentAt &&
       Date.now() - user.phoneOtpLastSentAt.getTime() < 30_000
@@ -53,7 +51,7 @@ exports.sendPhoneOtp = async (req, res) => {
 
     const otp = generateOtp();
 
-    // 🔐 Save OTP only after phone is validated
+    // 🔐 Save OTP (hashed)
     user.phoneOtpHash = hashOtp(otp);
     user.phoneOtpExpiresAt = Date.now() + 5 * 60 * 1000;
     user.phoneOtpLastSentAt = new Date();
@@ -61,30 +59,28 @@ exports.sendPhoneOtp = async (req, res) => {
 
     await user.save();
 
-    const smsResult = await sendSms({
-      to: phone,
-      message: `Your Mtaani verification code is ${otp}. It expires in 5 minutes.`,
-      requestId: `otp-${user._id}-${Date.now()}`,
+    // 📲 Send via WhatsApp
+    await sendWhatsAppOtp({
+      phone,
+      code: otp,
     });
 
-    if (!smsResult.success) {
-      return res.status(502).json({
-        message: "SMS delivery failed",
-        details: smsResult.recipients,
-      });
-    }
-
-    res.json({ message: "Verification code sent" });
+    res.json({
+      success: true,
+      channel: "whatsapp",
+      message: "Verification code sent via WhatsApp",
+    });
   } catch (err) {
     console.error("Send OTP error:", err);
-
     res.status(500).json({
       message: "Failed to send verification code",
     });
   }
 };
 
-/* ---------------- VERIFY OTP ---------------- */
+/* =====================================================
+   VERIFY PHONE OTP
+===================================================== */
 exports.verifyPhoneOtp = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -117,11 +113,13 @@ exports.verifyPhoneOtp = async (req, res) => {
     if (hashedCode !== user.phoneOtpHash) {
       user.phoneOtpAttempts += 1;
       await user.save();
+
       return res.status(400).json({ message: "Invalid code" });
     }
 
     // ✅ VERIFIED
     user.verified = true;
+
     user.phoneOtpHash = null;
     user.phoneOtpExpiresAt = null;
     user.phoneOtpLastSentAt = null;
@@ -129,7 +127,11 @@ exports.verifyPhoneOtp = async (req, res) => {
 
     await user.save();
 
-    res.json({ message: "Phone verified successfully" });
+    res.json({
+      success: true,
+      verified: true,
+      message: "Phone verified successfully",
+    });
   } catch (err) {
     console.error("Verify OTP error:", err);
     res.status(500).json({ message: "Failed to verify code" });

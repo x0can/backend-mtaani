@@ -13,6 +13,8 @@ services:
       - ./uploads:/app/uploads
     depends_on:
       - mongo
+    command: npm run dev
+  
 
   mongo:
     image: mongo:7

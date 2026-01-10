@@ -1,26 +1,41 @@
-const { Resend } = require("resend");
+// services/email.js
+const nodemailer = require("nodemailer");
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST || "smtp.gmail.com",
+  port: Number(process.env.SMTP_PORT || 465),
+  secure: String(process.env.SMTP_SECURE || "true") === "true", // true for 465, false for 587
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+});
 
-exports.sendEmail = async ({ to, subject, html }) => {
-  const { data, error } = await resend.emails.send({
-    from: "Mtaani <no-reply@mtaani.co.ke>", // or resend.dev for testing
-    to: Array.isArray(to) ? to : [to],
-    subject,
-    html,
-  });
+// Optional: verify SMTP config on boot (call once in app start if you want)
+exports.verifyEmailTransport = async () => {
+  await transporter.verify();
+  console.log("✅ SMTP transporter ready");
+};
 
-  if (error) {
-    console.error("❌ Resend error:", error);
-    throw new Error(error.message || "Email send failed");
+exports.sendEmail = async ({ to, subject, html, text }) => {
+  try {
+    const info = await transporter.sendMail({
+      from: process.env.APP_EMAIL_FROM || process.env.SMTP_USER,
+      to: Array.isArray(to) ? to.join(",") : to,
+      subject,
+      html,
+      text,
+    });
+
+    console.log("📧 Email sent:", info.messageId);
+
+    return {
+      accepted: true,
+      messageId: info.messageId,
+      raw: info,
+    };
+  } catch (err) {
+    console.error("❌ SMTP send error:", err);
+    throw new Error(err?.message || "Email send failed");
   }
-
-  // ✅ Accepted by Resend
-  console.log("📧 Email accepted:", data);
-
-  return {
-    accepted: true,
-    messageId: data?.id ?? null, // may be undefined, that's OK
-    raw: data,
-  };
 };

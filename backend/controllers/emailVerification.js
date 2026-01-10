@@ -1,113 +1,108 @@
+// controllers/emailVerification.js
+const crypto = require("crypto");
 const { User } = require("../db");
-const { generateOtp, hashOtp } = require("../utils/otp");
 const { sendEmail } = require("../services/email");
 
-/* ---------------- SEND EMAIL OTP ---------------- */
+function generateOtp() {
+  return String(Math.floor(100000 + Math.random() * 900000)); // 6 digits
+}
+
+function hashOtp(email, otp) {
+  const secret = process.env.JWT_SECRET || process.env.OTP_SECRET || "fallback_secret";
+  return crypto
+    .createHmac("sha256", secret)
+    .update(`${email.toLowerCase()}|${otp}`)
+    .digest("hex");
+}
+
 exports.sendEmailOtp = async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
+    // ✅ body may be empty; authMiddleware already loaded user
+    const email = (req.user?.email || req.body?.email || "").toLowerCase();
 
-    if (!user || !user.email) {
-      return res.status(400).json({ message: "Email not found" });
+    if (!email) return res.status(400).json({ message: "Email missing" });
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    if (user.emailVerified) {
+      return res.status(200).json({ message: "Email already verified" });
     }
 
-    // 🔒 use ONE source of truth
-    if (user.emailVerified === true) {
-      return res.json({ message: "Email already verified" });
-    }
-
-    // ⏱ rate limit (30s)
-    if (
-      user.emailOtpLastSentAt &&
-      Date.now() - user.emailOtpLastSentAt.getTime() < 30_000
-    ) {
-      return res.status(429).json({
-        message: "Please wait before requesting another code",
-      });
-    }
-
-    // 🔐 generate OTP
+    const ttlMinutes = Number(process.env.OTP_TTL_MINUTES || 10);
     const otp = generateOtp();
-    const otpHash = hashOtp(otp);
-    const expiresAt = Date.now() + 5 * 60 * 1000;
 
-    // 📧 send email (Resend-style)
-    const emailResult = await sendEmail({
-      to: user.email,
-      subject: "Your Mtaani verification code",
-      html: `
-        <h2>Mtaani Verification</h2>
-        <p>Your verification code is:</p>
-        <h1>${otp}</h1>
-        <p>This code expires in 5 minutes.</p>
-      `,
-    });
-
-    // ❌ only fail if provider explicitly errored
-    if (!emailResult || emailResult.accepted !== true) {
-      throw new Error("Email not accepted by provider");
-    }
-
-    // ✅ persist OTP AFTER acceptance
-    user.emailOtpHash = otpHash;
-    user.emailOtpExpiresAt = expiresAt;
+    user.emailOtpHash = hashOtp(email, otp);
+    user.emailOtpExpiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
     user.emailOtpLastSentAt = new Date();
-    user.emailOtpMessageId = emailResult.messageId ?? null;
-
+    user.emailOtpAttempts = 0;
     await user.save();
 
-    return res.json({
-      message: "Verification email sent",
+    await sendEmail({
+      to: email,
+      subject: `${process.env.APP_NAME || "Mtaani"} verification code`,
+      html: `<div style="font-family: Arial">
+              <h2>Your OTP</h2>
+              <p style="font-size:28px;font-weight:800;letter-spacing:4px">${otp}</p>
+              <p>Expires in ${ttlMinutes} minutes.</p>
+            </div>`,
+      text: `Your OTP is ${otp}. Expires in ${ttlMinutes} minutes.`,
     });
-  } catch (err) {
-    console.error("Send email OTP error:", err);
 
-    return res.status(500).json({
-      message: "Failed to send verification email. Please try again.",
-    });
+    return res.json({ message: "OTP sent to email" });
+  } catch (err) {
+    console.error("sendEmailOtp error:", err);
+    return res.status(500).json({ message: "Failed to send OTP" });
   }
 };
 
-/* ---------------- VERIFY EMAIL OTP ---------------- */
 exports.verifyEmailOtp = async (req, res) => {
   try {
-    const { code } = req.body;
-    const user = await User.findById(req.user.id);
+    const email = (req.user?.email || req.body?.email || "").toLowerCase();
+    const otp = String(req.body?.otp || "").trim();
 
-    if (!code) {
-      return res.status(400).json({ message: "Code is required" });
+    if (!email || !otp) {
+      return res.status(400).json({ message: "Email and OTP are required" });
     }
 
-    if (!user || !user.emailOtpHash) {
-      return res.status(400).json({ message: "No verification in progress" });
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    if (!user.emailOtpHash || !user.emailOtpExpiresAt) {
+      return res.status(400).json({ message: "Request a new OTP" });
     }
 
-    if (!user.emailOtpExpiresAt || user.emailOtpExpiresAt < Date.now()) {
-      return res.status(400).json({ message: "Code expired" });
+    if (new Date() > user.emailOtpExpiresAt) {
+      console.log('expired', user.emailOtpExpiresAt)
+      return res.status(400).json({ message: "OTP expired. Request a new OTP." });
     }
 
-    if (hashOtp(code) !== user.emailOtpHash) {
-      return res.status(400).json({ message: "Invalid code" });
+    const incomingHash = hashOtp(email, otp);
+    const ok =
+      incomingHash.length === user.emailOtpHash.length &&
+      crypto.timingSafeEqual(Buffer.from(incomingHash, "hex"), Buffer.from(user.emailOtpHash, "hex"));
+
+    if (!ok) {
+      user.emailOtpAttempts = (user.emailOtpAttempts || 0) + 1;
+      await user.save();
+      return res.status(400).json({ message: "Invalid OTP" });
     }
 
-    // ✅ verified (single source of truth)
+    // ✅ mark verified
     user.emailVerified = true;
-    user.verified = true;
+    user.verified = true; // if you treat this as overall verification
 
-    // 🧹 cleanup
+    // clear otp
     user.emailOtpHash = null;
     user.emailOtpExpiresAt = null;
-    user.emailOtpLastSentAt = null;
-    user.emailOtpMessageId = null;
+    user.emailOtpAttempts = 0;
 
     await user.save();
 
-    return res.json({
-      message: "Email verified successfully",
-      user,
-    });
+    const safeUser = await User.findById(user._id).select("-passwordHash");
+    return res.json({ message: "Email verified", user: safeUser });
   } catch (err) {
-    console.error("Verify email OTP error:", err);
-    return res.status(500).json({ message: "Verification failed" });
+    console.error("verifyEmailOtp error:", err);
+    return res.status(500).json({ message: "Failed to verify OTP" });
   }
 };

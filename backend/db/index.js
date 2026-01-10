@@ -54,6 +54,13 @@ const UserSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// Helpful indexes (optional but recommended)
+UserSchema.index({ email: 1 }, { unique: true });
+UserSchema.index({ emailOtpExpiresAt: 1 });
+UserSchema.index({ phoneOtpExpiresAt: 1 });
+UserSchema.index({ emailVerified: 1 });
+UserSchema.index({ verified: 1 });
+
 /* ---- Product & Category ---- */
 const ProductCategorySchema = new mongoose.Schema(
   {
@@ -317,9 +324,6 @@ const ProductEventLog = mongoose.model(
   ProductEventLogSchema
 );
 
-
-
-
 module.exports = {
   User,
   Product,
@@ -328,5 +332,5 @@ module.exports = {
   ProductEventLog,
   ProductInteraction,
   SearchHistory,
-  AdminRecommendation
+  AdminRecommendation,
 };

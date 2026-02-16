@@ -97,6 +97,7 @@ router.post("/api/auth/login", async (req, res) => {
         role: fullUser.role,
         verified: fullUser.verified,
         image: fullUser.image || null, // ⭐ IMPORTANT
+        isAdmin: fullUser.isAdmin, // ⭐ IMPORTANT
       },
     });
   } catch (err) {

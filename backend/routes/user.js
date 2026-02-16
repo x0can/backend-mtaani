@@ -223,6 +223,43 @@ router.get(
 );
 
 
+
+router.patch(
+  "/api/admin/users/:id/password",
+  authMiddleware,
+  adminOnly,
+  async (req, res) => {
+    try {
+      const { newPassword } = req.body;
+
+      if (!newPassword || typeof newPassword !== "string") {
+        return res.status(400).json({ message: "newPassword is required" });
+      }
+      if (newPassword.trim().length < 6) {
+        return res
+          .status(400)
+          .json({ message: "New password must be at least 6 characters" });
+      }
+
+      const user = await User.findById(req.params.id);
+      if (!user) return res.status(404).json({ message: "User not found" });
+
+      const salt = await bcrypt.genSalt(10);
+      user.passwordHash = await bcrypt.hash(newPassword, salt);
+
+      await user.save();
+
+      return res.json({ success: true, message: "Password reset successfully" });
+    } catch (err) {
+      console.error("Admin reset password error:", err);
+      return res
+        .status(500)
+        .json({ message: "Failed to reset password", error: err.message });
+    }
+  }
+);
+
+
 // UPDATE OWN PROFILE
 router.put("/api/user/profile", authMiddleware, async (req, res) => {
   try {

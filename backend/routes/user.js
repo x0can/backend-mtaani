@@ -2,6 +2,8 @@
 const express = require("express");
 const router = express.Router();
 
+const bcrypt = require("bcryptjs")
+
 const { User, Order } = require("../db");
 const { authMiddleware, adminOnly } = require("../auth");
 

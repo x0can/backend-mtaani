@@ -248,6 +248,49 @@ router.put("/api/user/profile", authMiddleware, async (req, res) => {
   }
 });
 
+router.patch("/api/user/change-password", authMiddleware, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res
+        .status(400)
+        .json({ message: "currentPassword and newPassword are required" });
+    }
+
+    // Basic strength rules (adjust to your needs)
+    if (typeof newPassword !== "string" || newPassword.trim().length < 6) {
+      return res
+        .status(400)
+        .json({ message: "New password must be at least 6 characters" });
+    }
+
+    const user = await User.findById(req.user._id).select("+passwordHash");
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    const ok = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!ok) return res.status(400).json({ message: "Current password is incorrect" });
+
+    // Prevent setting the same password again (optional but nice)
+    const same = await bcrypt.compare(newPassword, user.passwordHash);
+    if (same) {
+      return res
+        .status(400)
+        .json({ message: "New password must be different from the old password" });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    user.passwordHash = await bcrypt.hash(newPassword, salt);
+
+    await user.save();
+
+    return res.json({ success: true, message: "Password updated successfully" });
+  } catch (err) {
+    console.error("Change password error:", err);
+    return res.status(500).json({ message: "Failed to change password" });
+  }
+});
+
 
 
 module.exports = router;

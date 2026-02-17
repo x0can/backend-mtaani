@@ -10,7 +10,6 @@ const http = require("http");
 const { Server } = require("socket.io");
 const path = require("path");
 
-
 const routes = require("./routes/index");
 const { startPresenceMonitor } = require("./services/presenceService");
 const { User, Order } = require("./db");
@@ -41,32 +40,19 @@ if (NODE_ENV === "development") {
   app.use(morgan("dev"));
 }
 
-
-// const corsOrigins = (process.env.CORS_ORIGINS || "")
-//   .split(",")
-//   .map((o) => o.trim())
-//   .filter(Boolean);
-
-// app.use(
-//   cors({
-//     origin:
-//       NODE_ENV === "development" || corsOrigins.length === 0
-//         ? "*"
-//         : corsOrigins,
-//   })
-// );
-
+const corsOrigins = (process.env.CORS_ORIGINS || "")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
 
 app.use(
   cors({
-    origin: true, // reflect request origin
-    credentials: true,
+    origin:
+      NODE_ENV === "development" || corsOrigins.length === 0
+        ? "*"
+        : corsOrigins,
   })
 );
-
-app.options("*", cors());
-
-
 
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 

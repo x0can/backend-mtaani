@@ -631,6 +631,53 @@ router.get("/api/discovery/quick-picks", async (req, res) => {
   res.json(data);
 });
 
+
+// CLEAR ALL IMAGES
+// PUT /api/admin/products/:id/clear-images
+router.put(
+  "/api/admin/products/:id/clear-images",
+  authMiddleware,
+  adminOnly,
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const product = await Product.findByIdAndUpdate(
+        id,
+        { $set: { images: [] } },
+        { new: true }
+      );
+
+      if (!product) {
+        return res.status(404).json({ message: "Product not found" });
+      }
+
+      // Optional but recommended: clear caches
+      await Promise.all([
+        delCacheByNamespace?.("products:home").catch(() => {}),
+        delCacheByNamespace?.("products:list").catch(() => {}),
+        delCacheByNamespace?.("discovery").catch(() => {}),
+      ]);
+
+      // Emit socket/event update
+      await req.emitProductEvent(EVENTS.PRODUCT_UPDATED, {
+        productId: product._id,
+        updatedAt: new Date(),
+      });
+
+      res.json({
+        success: true,
+        productId: product._id,
+        images: product.images,
+      });
+    } catch (err) {
+      console.error("Clear product images error:", err);
+      res.status(500).json({ message: "Failed to clear images" });
+    }
+  }
+);
+
+
 /***********************************************************************
  *  HOME PRODUCTS (TOP 20)
  ***********************************************************************/

@@ -102,7 +102,7 @@ mongoose
     startPresenceMonitor(io);
     // 🔥 Start cache worker (only once)
     if (process.env.ENABLE_CACHE_WORKER !== "false") {
-      // startCacheWorker();
+      startCacheWorker();
     }
   })
   .catch((err) => {

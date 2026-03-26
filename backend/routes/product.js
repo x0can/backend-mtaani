@@ -68,7 +68,7 @@ router.get("/api/products/home", authMiddleware, async (req, res) => {
         .limit(FLASH_LIMIT)
         .lean(),
 
-      // 🔥 Global quick picks = most viewed
+      // 🔥 Global quick picks = most viewed (active + in stock only)
       ProductInteraction.aggregate([
         { $match: { type: "view" } },
         {
@@ -78,17 +78,40 @@ router.get("/api/products/home", authMiddleware, async (req, res) => {
           },
         },
         { $sort: { score: -1 } },
-        { $limit: QUICK_LIMIT },
+        { $limit: QUICK_LIMIT * 3 }, // over-fetch to account for filtering
         {
           $lookup: {
             from: "products",
-            localField: "_id",
-            foreignField: "_id",
+            let: { productId: "$_id" },
+            pipeline: [
+              {
+                $match: {
+                  $expr: { $eq: ["$_id", "$$productId"] },
+                  isActive: true,
+                  stock: { $gt: 0 },
+                },
+              },
+              {
+                $lookup: {
+                  from: "productcategories",
+                  localField: "category",
+                  foreignField: "_id",
+                  as: "category",
+                },
+              },
+              {
+                $unwind: {
+                  path: "$category",
+                  preserveNullAndEmptyArrays: true,
+                },
+              },
+            ],
             as: "product",
           },
         },
         { $unwind: "$product" },
         { $replaceRoot: { newRoot: "$product" } },
+        { $limit: QUICK_LIMIT },
       ]),
 
       Product.find({})
@@ -108,8 +131,14 @@ router.get("/api/products/home", authMiddleware, async (req, res) => {
     // ✅ Guest/empty fallback logic
     const hasHistory = await ProductInteraction.exists({ user: userId });
 
+    // ✅ Fallback for quickPicks when no interaction data exists yet
+    const resolvedQuickPicks =
+      quickPicks.length > 0
+        ? quickPicks
+        : featured.slice(0, QUICK_LIMIT);
+
     if (!recommended.length && !hasHistory) {
-      recommended = quickPicks.slice(0, QUICK_LIMIT);
+      recommended = resolvedQuickPicks.slice(0, QUICK_LIMIT);
     }
 
     const hero =
@@ -120,7 +149,7 @@ router.get("/api/products/home", authMiddleware, async (req, res) => {
     const payload = {
       hero,
       flashDeals,
-      quickPicks,
+      quickPicks: resolvedQuickPicks,
       recommended,
       featured,
       newArrivals,
@@ -593,42 +622,62 @@ router.post(
 );
 
 router.get("/api/discovery/quick-picks", async (req, res) => {
-  const cacheKey = "discovery:quick-picks:v1";
-  const cached = await getCache(cacheKey);
-  if (cached) return res.json(cached);
+  try {
+    const cacheKey = "discovery:quick-picks:v1";
+    const cached = await getCache(cacheKey);
+    if (cached) return res.json(cached);
 
-  const data = await ProductInteraction.aggregate([
-    { $match: { type: "view" } },
-    {
-      $group: {
-        _id: "$product",
-        score: { $sum: "$weight" },
+    const data = await ProductInteraction.aggregate([
+      { $match: { type: "view" } },
+      {
+        $group: {
+          _id: "$product",
+          score: { $sum: "$weight" },
+        },
       },
-    },
-    { $sort: { score: -1 } },
-    { $limit: 50 },
-    {
-      $lookup: {
-        from: "products",
-        let: { productId: "$_id" },
-        pipeline: [
-          {
-            $match: {
-              $expr: { $eq: ["$_id", "$$productId"] },
-              isActive: true,
-              stock: { $gt: 0 },
+      { $sort: { score: -1 } },
+      { $limit: 150 }, // over-fetch to account for isActive/stock filtering
+      {
+        $lookup: {
+          from: "products",
+          let: { productId: "$_id" },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ["$_id", "$$productId"] },
+                isActive: true,
+                stock: { $gt: 0 },
+              },
             },
-          },
-        ],
-        as: "product",
+            {
+              $lookup: {
+                from: "productcategories",
+                localField: "category",
+                foreignField: "_id",
+                as: "category",
+              },
+            },
+            {
+              $unwind: {
+                path: "$category",
+                preserveNullAndEmptyArrays: true,
+              },
+            },
+          ],
+          as: "product",
+        },
       },
-    },
-    { $unwind: "$product" },
-    { $replaceRoot: { newRoot: "$product" } },
-  ]);
+      { $unwind: "$product" },
+      { $replaceRoot: { newRoot: "$product" } },
+      { $limit: 50 },
+    ]);
 
-  await setCache(cacheKey, data, 300, "discovery");
-  res.json(data);
+    await setCache(cacheKey, data, 300, "discovery");
+    res.json(data);
+  } catch (err) {
+    console.error("Discovery quick-picks error:", err);
+    res.status(500).json({ message: "Failed to load quick picks" });
+  }
 });
 
 

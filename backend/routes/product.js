@@ -30,8 +30,10 @@ router.get("/api/products/home", authMiddleware, async (req, res) => {
       ? `products:home:v5:user:${userId}`
       : "products:home:v5";
 
-    const cached = await getCache(cacheKey);
-    if (cached) return res.json(cached);
+    if (!req.query.bust) {
+      const cached = await getCache(cacheKey);
+      if (cached) return res.json(cached);
+    }
 
     const projection = {
       title: 1,
@@ -40,9 +42,11 @@ router.get("/api/products/home", authMiddleware, async (req, res) => {
       featured: 1,
       featuredOrder: 1,
       isFlashDeal: 1,
+      flashDealOrder: 1,
+      isQuickPick: 1,
+      quickPickOrder: 1,
       category: 1,
       priceUpdatedAt: 1,
-      discount: 1,
       stock: 1,
       createdAt: 1,
     };
@@ -53,7 +57,7 @@ router.get("/api/products/home", authMiddleware, async (req, res) => {
     const FEATURED_LIMIT = 250;
     const NEW_LIMIT = 250;
 
-    const [featured, flashDeals, quickPicks, newArrivals] = await Promise.all([
+    const [featured, flashDeals, adminQuickPicks, interactionQuickPicks, newArrivals] = await Promise.all([
       Product.find({ featured: true })
         .select(projection)
         .populate("category", "name slug")
@@ -64,21 +68,24 @@ router.get("/api/products/home", authMiddleware, async (req, res) => {
       Product.find({ isFlashDeal: true })
         .select(projection)
         .populate("category", "name slug")
-        .sort({ priceUpdatedAt: -1, createdAt: -1 })
+        .sort({ flashDealOrder: 1, priceUpdatedAt: -1, createdAt: -1 })
         .limit(FLASH_LIMIT)
         .lean(),
 
-      // 🔥 Global quick picks = most viewed (active + in stock only)
+      // Admin-curated quick picks (takes priority when set)
+      Product.find({ isQuickPick: true, isActive: true, stock: { $gt: 0 } })
+        .select(projection)
+        .populate("category", "name slug")
+        .sort({ quickPickOrder: 1, createdAt: -1 })
+        .limit(QUICK_LIMIT)
+        .lean(),
+
+      // Interaction-based picks (fallback when admin hasn't curated)
       ProductInteraction.aggregate([
         { $match: { type: "view" } },
-        {
-          $group: {
-            _id: "$product",
-            score: { $sum: "$weight" },
-          },
-        },
+        { $group: { _id: "$product", score: { $sum: "$weight" } } },
         { $sort: { score: -1 } },
-        { $limit: QUICK_LIMIT * 3 }, // over-fetch to account for filtering
+        { $limit: QUICK_LIMIT * 3 },
         {
           $lookup: {
             from: "products",
@@ -99,12 +106,7 @@ router.get("/api/products/home", authMiddleware, async (req, res) => {
                   as: "category",
                 },
               },
-              {
-                $unwind: {
-                  path: "$category",
-                  preserveNullAndEmptyArrays: true,
-                },
-              },
+              { $unwind: { path: "$category", preserveNullAndEmptyArrays: true } },
             ],
             as: "product",
           },
@@ -131,10 +133,12 @@ router.get("/api/products/home", authMiddleware, async (req, res) => {
     // ✅ Guest/empty fallback logic
     const hasHistory = await ProductInteraction.exists({ user: userId });
 
-    // ✅ Fallback for quickPicks when no interaction data exists yet
+    // Priority: admin-curated → interaction-based → featured fallback
     const resolvedQuickPicks =
-      quickPicks.length > 0
-        ? quickPicks
+      adminQuickPicks.length > 0
+        ? adminQuickPicks
+        : interactionQuickPicks.length > 0
+        ? interactionQuickPicks
         : featured.slice(0, QUICK_LIMIT);
 
     if (!recommended.length && !hasHistory) {
@@ -371,6 +375,50 @@ router.put(
   }
 );
 
+router.put(
+  "/api/admin/products/quick-picks",
+  authMiddleware,
+  adminOnly,
+  async (req, res) => {
+    try {
+      const { products } = req.body;
+      // products = [{ id, order }]
+
+      if (!Array.isArray(products) || products.length > 50) {
+        return res
+          .status(400)
+          .json({ message: "Maximum of 50 quick-pick products allowed" });
+      }
+
+      // Reset all existing quick picks
+      await Product.updateMany(
+        { isQuickPick: true },
+        { isQuickPick: false, quickPickOrder: null }
+      );
+
+      // Apply new set
+      for (const item of products) {
+        await Product.findByIdAndUpdate(item.id, {
+          isQuickPick: true,
+          quickPickOrder: item.order,
+        });
+      }
+
+      // Bust home cache so the next request gets fresh picks
+      await delCacheByNamespace("products:home");
+
+      await req.emitProductEvent(EVENTS.PRODUCT_FEATURED_UPDATED, {
+        updatedAt: new Date(),
+      });
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Set quick-picks error:", err);
+      res.status(500).json({ message: "Failed to update quick picks" });
+    }
+  }
+);
+
 router.get("/api/products", async (req, res) => {
   try {
     const page = Math.max(parseInt(req.query.page) || 1, 1);
@@ -569,23 +617,22 @@ router.get("/api/products/:id", authMiddleware, async (req, res) => {
     const userId = req.user?._id || req.user?.id; // ✅ DEFINE IT
 
     if (userId) {
-      ProductInteraction.create({
-        user: userId,
-        product: product._id,
-        type: "view",
-        weight: 1,
-      }).catch(() => {});
-
-      await delCache(`products:home:v5:user:${userId}`);
-
-      console.log(EVENTS.USER_INTERACTION);
-
-      // 🔥 Emit socket event
-      await req.emitProductEvent(EVENTS.USER_INTERACTION, {
-        userId: String(userId),
-        type: "view",
-        productId: product._id,
-      });
+      try {
+        await ProductInteraction.create({
+          user: userId,
+          product: product._id,
+          type: "view",
+          weight: 1,
+        });
+        await delCache(`products:home:v5:user:${userId}`);
+        await req.emitProductEvent(EVENTS.USER_INTERACTION, {
+          userId: String(userId),
+          type: "view",
+          productId: product._id,
+        });
+      } catch {
+        // non-critical — don't block product response
+      }
     }
 
     res.json(product);

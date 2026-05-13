@@ -9,6 +9,7 @@ module.exports = async function updateFlashDeal({
   const update = payload.enabled
     ? {
         isFlashDeal: true,
+        flashDealOrder: payload.flashDealOrder != null ? Number(payload.flashDealOrder) : null,
         priceUpdatedAt: new Date(),
         flashDeal: {
           discountPercent: Number(payload.discountPercent),
@@ -18,6 +19,7 @@ module.exports = async function updateFlashDeal({
       }
     : {
         isFlashDeal: false,
+        flashDealOrder: null,
         priceUpdatedAt: new Date(),
         flashDeal: null,
       };

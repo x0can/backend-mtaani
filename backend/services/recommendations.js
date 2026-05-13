@@ -36,9 +36,10 @@ async function getRecommendedForUser(userId, limit = 12) {
       $group: {
         _id: "$product",
         score: { $sum: { $multiply: ["$weight", "$decay"] } },
+        lastInteractedAt: { $max: "$createdAt" },
       },
     },
-    { $sort: { score: -1 } },
+    { $sort: { lastInteractedAt: -1, score: -1 } },
     { $limit: limit * 3 },
   ]);
 
@@ -75,9 +76,12 @@ async function getRecommendedForUser(userId, limit = 12) {
      4) SCORE MERGE
   -------------------------------- */
   const scoreMap = new Map();
+  const lastSeenMap = new Map();
 
   interactions.forEach((i) => {
-    scoreMap.set(String(i._id), i.score * 0.6);
+    const k = String(i._id);
+    scoreMap.set(k, i.score * 0.6);
+    lastSeenMap.set(k, new Date(i.lastInteractedAt).getTime());
   });
 
   categoryProducts.forEach((p) => {
@@ -91,13 +95,19 @@ async function getRecommendedForUser(userId, limit = 12) {
     scoreMap.set(k, (scoreMap.get(k) || 0) + a.priority * 0.15);
   });
 
-  // 🔑 break ties per-user
+  // break ties per-user
   for (const [k, v] of scoreMap.entries()) {
     scoreMap.set(k, v + Math.random() * 0.02);
   }
 
+  // primary sort: most recently interacted first; secondary: score
   const rankedIds = [...scoreMap.entries()]
-    .sort((a, b) => b[1] - a[1])
+    .sort((a, b) => {
+      const tA = lastSeenMap.get(a[0]) || 0;
+      const tB = lastSeenMap.get(b[0]) || 0;
+      if (tB !== tA) return tB - tA;
+      return b[1] - a[1];
+    })
     .slice(0, limit)
     .map(([id]) => new mongoose.Types.ObjectId(id));
 
@@ -118,7 +128,6 @@ async function getRecommendedForUser(userId, limit = 12) {
       isFlashDeal: 1,
       category: 1,
       priceUpdatedAt: 1,
-      discount: 1,
       stock: 1,
       createdAt: 1,
     })

@@ -110,9 +110,13 @@ const ProductSchema = new mongoose.Schema(
     featured: { type: Boolean, default: false },
     featuredOrder: { type: Number, default: null },
 
+    isQuickPick: { type: Boolean, default: false },
+    quickPickOrder: { type: Number, default: null },
+
     isActive: { type: Boolean, default: true },
 
     isFlashDeal: { type: Boolean, default: false },
+    flashDealOrder: { type: Number, default: null },
     flashDeal: {
       discountPercent: { type: Number, min: 1, max: 90 },
       startAt: Date,

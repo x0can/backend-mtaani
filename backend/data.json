@@ -1,0 +1,381 @@
+[
+    {
+        "_id": "69469bbdeeaba252dc57e5b3",
+        "title": "TOSS 20G LAVENDER CTN",
+        "price": 540,
+        "stock": 100,
+        "images": [
+            "https://res.cloudinary.com/dnvirrvlk/image/upload/v1766406913/ecommerce/chgjhqqz25wl5x43czfc.jpg"
+        ],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.558Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e5b4",
+        "title": "TOSS 20G MXD CTN",
+        "price": 530,
+        "stock": 100,
+        "images": [
+            "https://res.cloudinary.com/dnvirrvlk/image/upload/v1766470950/ecommerce/zjzy5w2uvq7ggjpqm9ol.jpg"
+        ],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.558Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e5b5",
+        "title": "TOSS 20G PCS",
+        "price": 5,
+        "stock": 100,
+        "images": [
+            "https://res.cloudinary.com/dnvirrvlk/image/upload/v1766406878/ecommerce/iffrbdqmbbnwpjfl0owe.jpg"
+        ],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.558Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e5b1",
+        "title": "TOSS 20G DZN YELL",
+        "price": 55,
+        "stock": 100,
+        "images": [
+            "https://res.cloudinary.com/dnvirrvlk/image/upload/v1766406661/ecommerce/e85b3gll1qjw8kdguhfi.jpg"
+        ],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.557Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e5af",
+        "title": "TOSS 20G DZ BLUE",
+        "price": 55,
+        "stock": 100,
+        "images": [
+            "https://res.cloudinary.com/dnvirrvlk/image/upload/v1766406553/ecommerce/s2zb0jiljmosizphkjey.jpg"
+        ],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.557Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e5b2",
+        "title": "TOSS 20G HLF CTN",
+        "price": 275,
+        "stock": 100,
+        "images": [
+            "https://res.cloudinary.com/dnvirrvlk/image/upload/v1766406705/ecommerce/asmxm1g9ldmmtoigoiwc.jpg"
+        ],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.557Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e5ad",
+        "title": "TOSS 200G HLF CTN",
+        "price": 850,
+        "stock": 100,
+        "images": [
+            "https://res.cloudinary.com/dnvirrvlk/image/upload/v1766470895/ecommerce/hym8bhpfmu382ybbq6ul.jpg"
+        ],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.557Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e5ae",
+        "title": "TOSS 20G BLUE CTN",
+        "price": 600,
+        "stock": 100,
+        "images": [
+            "https://res.cloudinary.com/dnvirrvlk/image/upload/v1766470912/ecommerce/g3ubh38ywx6guhu3xytu.jpg"
+        ],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.557Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e5b0",
+        "title": "TOSS 20G DZ LAVENDER",
+        "price": 55,
+        "stock": 100,
+        "images": [
+            "https://res.cloudinary.com/dnvirrvlk/image/upload/v1766406609/ecommerce/d1df3qwvikycctz3uqeu.jpg"
+        ],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.557Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e5a7",
+        "title": "TOSS 1KG BLUE SATCHET",
+        "price": 3100,
+        "stock": 100,
+        "images": [
+            "https://res.cloudinary.com/dnvirrvlk/image/upload/v1766472340/ecommerce/rrlxojqvzozd0ifmhzsx.jpg"
+        ],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.556Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e5a8",
+        "title": "TOSS 1KG GREEN",
+        "price": 1750,
+        "stock": 100,
+        "images": [
+            "https://res.cloudinary.com/dnvirrvlk/image/upload/v1770811615/ecommerce/o2drurxrp1ap1p2clnm4.webp",
+            "blob:http://localhost:3000/19e19c61-2d21-4c72-9d96-9c4b8df2a462"
+        ],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.556Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e5ac",
+        "title": "TOSS 200G CT",
+        "price": 1600,
+        "stock": 100,
+        "images": [
+            "https://res.cloudinary.com/dnvirrvlk/image/upload/v1766472312/ecommerce/f7wvfvk8ljbeend3bcq9.jpg"
+        ],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.556Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e5ab",
+        "title": "TOSS 200G 9PCS",
+        "price": 605,
+        "stock": 100,
+        "images": [
+            "https://res.cloudinary.com/dnvirrvlk/image/upload/v1766472356/ecommerce/xo7ekuec0lpiudoqqgck.jpg"
+        ],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.556Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e5a9",
+        "title": "TOSS 20 MIXED",
+        "price": 55,
+        "stock": 100,
+        "images": [
+            "https://res.cloudinary.com/dnvirrvlk/image/upload/v1766472266/ecommerce/qz2ihej27vclvrvmdaen.jpg"
+        ],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.556Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e5aa",
+        "title": "TOSS 200G 6PCS",
+        "price": 390,
+        "stock": 100,
+        "images": [
+            "https://res.cloudinary.com/dnvirrvlk/image/upload/v1766472282/ecommerce/mvr7r2751cehogfdvv6e.jpg"
+        ],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.556Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e5a2",
+        "title": "TOP FRY 5LTS",
+        "price": 1230,
+        "stock": 100,
+        "images": [
+            "https://res.cloudinary.com/dnvirrvlk/image/upload/v1766472557/ecommerce/uwwykiynaeabxyfzqyz4.jpg"
+        ],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.555Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e5a4",
+        "title": "TOSHA RICE BLUE 25KG",
+        "price": 2200,
+        "stock": 100,
+        "images": [
+            "https://res.cloudinary.com/dnvirrvlk/image/upload/v1766472415/ecommerce/yrrbmmm0ayxerrhq7dnb.jpg"
+        ],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.555Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e5a3",
+        "title": "TOSHA BLUE 12.5KG",
+        "price": 1150,
+        "stock": 100,
+        "images": [],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.555Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e5a5",
+        "title": "TOSS 100 G CTN",
+        "price": 1450,
+        "stock": 100,
+        "images": [
+            "https://res.cloudinary.com/dnvirrvlk/image/upload/v1766478957/ecommerce/iuxnl7ipz8fb4prqftex.jpg"
+        ],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.555Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e5a1",
+        "title": "TOP CHIPS BL",
+        "price": 330,
+        "stock": 100,
+        "images": [
+            "https://res.cloudinary.com/dnvirrvlk/image/upload/v1766472506/ecommerce/iy5xa2cmqdo7hlolxhwt.jpg"
+        ],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.555Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e5a6",
+        "title": "TOSS 100G HLF CTN",
+        "price": 725,
+        "stock": 100,
+        "images": [
+            "https://res.cloudinary.com/dnvirrvlk/image/upload/v1766472433/ecommerce/vgcivatb9pkluc6syjwy.jpg"
+        ],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.555Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e59c",
+        "title": "TOMATO 5L",
+        "price": 220,
+        "stock": 100,
+        "images": [],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.554Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e5a0",
+        "title": "TOP CHIPS",
+        "price": 270,
+        "stock": 100,
+        "images": [
+            "https://res.cloudinary.com/dnvirrvlk/image/upload/v1766472754/ecommerce/l0pihqmr22infvbjagfy.jpg"
+        ],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.554Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e59d",
+        "title": "TOMATO PASTE",
+        "price": 280,
+        "stock": 100,
+        "images": [
+            "https://res.cloudinary.com/dnvirrvlk/image/upload/v1766472803/ecommerce/dbv5vidm8oae3sktkvfc.jpg"
+        ],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.554Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e59f",
+        "title": "TOOTH PIC PC",
+        "price": 15,
+        "stock": 100,
+        "images": [
+            "https://res.cloudinary.com/dnvirrvlk/image/upload/v1766472644/ecommerce/il7en9n8x7bzui7vtkxw.jpg"
+        ],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.554Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e59b",
+        "title": "TOMACORN 1KG",
+        "price": 1600,
+        "stock": 100,
+        "images": [],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.554Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e59e",
+        "title": "TOOTH PIC 1OUTER",
+        "price": 140,
+        "stock": 100,
+        "images": [],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.554Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e599",
+        "title": "TOILEX TISSUE BALE",
+        "price": 1270,
+        "stock": 100,
+        "images": [],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.553Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e598",
+        "title": "TOILEX TISSUE 10PK",
+        "price": 320,
+        "stock": 100,
+        "images": [],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.553Z",
+        "isFlashDeal": false
+    },
+    {
+        "_id": "69469bbdeeaba252dc57e59a",
+        "title": "TOILEX TISSUE PCS",
+        "price": 0,
+        "stock": 100,
+        "images": [
+            "https://res.cloudinary.com/dnvirrvlk/image/upload/v1771083258/ecommerce/xwbjima7y0xgi4pkvfiz.jpg"
+        ],
+        "featured": false,
+        "featuredOrder": null,
+        "createdAt": "2025-12-20T12:51:09.553Z",
+        "isFlashDeal": false
+    }
+]

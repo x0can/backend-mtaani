@@ -6,6 +6,7 @@ const bcrypt = require("bcryptjs")
 
 const { User, Order } = require("../db");
 const { authMiddleware, adminOnly } = require("../auth");
+const { delCache } = require("../services/cache");
 
 /***********************************************************************
  *  ADMIN — USER MANAGEMENT
@@ -47,6 +48,7 @@ router.patch(
 
     user.verified = true;
     await user.save();
+    await delCache(`auth:${user._id}`);
     res.json({ success: true, user });
   }
 );
@@ -62,6 +64,7 @@ router.patch(
 
     user.verified = false;
     await user.save();
+    await delCache(`auth:${user._id}`);
     res.json({ success: true, user });
   }
 );

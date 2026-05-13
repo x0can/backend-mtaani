@@ -120,8 +120,10 @@ router.post("/api/auth/verify-email-otp", authMiddleware, verifyEmailOtp);
 router.get("/api/me", authMiddleware, async (req, res) => {
   const cacheKey = `auth:${req.user._id}`;
 
-  const cached = await getCache(cacheKey);
-  if (cached) return res.json(cached);
+  if (!req.query.bust) {
+    const cached = await getCache(cacheKey);
+    if (cached) return res.json(cached);
+  }
 
   const user = await User.findById(req.user._id).select("-passwordHash");
 

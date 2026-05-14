@@ -1,6 +1,7 @@
 // routes/authRoutes.js
 const express = require("express");
 const bcrypt = require("bcryptjs");
+const axios = require("axios");
 const router = express.Router();
 
 const { User } = require("../db");
@@ -103,6 +104,102 @@ router.post("/api/auth/login", async (req, res) => {
   } catch (err) {
     console.error("Login failed:", err);
     res.status(500).json({ message: "Login failed" });
+  }
+});
+
+/* -----------------------------------------------------------------------
+   SOCIAL AUTH  –  POST /api/auth/social
+   Body: { provider: "google" | "facebook", accessToken: string }
+   Verifies the token with the provider, then finds-or-creates the user.
+----------------------------------------------------------------------- */
+router.post("/api/auth/social", async (req, res) => {
+  try {
+    const { provider, accessToken, idToken } = req.body;
+
+    if (!provider || (!accessToken && !idToken)) {
+      return res.status(400).json({ message: "provider and accessToken or idToken required" });
+    }
+
+    let profile = null;
+
+    if (provider === "google") {
+      const idToken = req.body.idToken;
+      if (idToken) {
+        // Native sign-in sends an ID token — verify via Google's tokeninfo endpoint
+        const { data } = await axios.get(
+          `https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`
+        );
+        if (!data.sub) return res.status(400).json({ message: "Invalid Google ID token" });
+        profile = { providerId: data.sub, email: data.email, name: data.name, picture: data.picture };
+      } else {
+        // Fallback: access_token (browser-based flow)
+        const { data } = await axios.get(
+          "https://www.googleapis.com/userinfo/v2/me",
+          { headers: { Authorization: `Bearer ${accessToken}` } }
+        );
+        profile = { providerId: data.id, email: data.email, name: data.name, picture: data.picture };
+      }
+    } else if (provider === "facebook") {
+      const { data } = await axios.get(
+        `https://graph.facebook.com/me?fields=id,name,email,picture.type(large)&access_token=${accessToken}`
+      );
+      // { id, email, name, picture: { data: { url } } }
+      profile = {
+        providerId: data.id,
+        email: data.email,
+        name: data.name,
+        picture: data.picture?.data?.url ?? null,
+      };
+    } else {
+      return res.status(400).json({ message: "Unsupported provider" });
+    }
+
+    if (!profile?.email) {
+      return res.status(400).json({ message: "Could not retrieve email from provider. Enable email permission." });
+    }
+
+    const providerField = provider === "google" ? "googleId" : "facebookId";
+
+    // Find by provider ID first, then email fallback
+    let user =
+      (await User.findOne({ [providerField]: profile.providerId })) ||
+      (await User.findOne({ email: profile.email }));
+
+    if (!user) {
+      // New user — social login counts as verified
+      user = await User.create({
+        name: profile.name,
+        email: profile.email,
+        phone: "",
+        [providerField]: profile.providerId,
+        passwordHash: await hashPassword(require("crypto").randomBytes(32).toString("hex")),
+        verified: true,
+        image: profile.picture || null,
+      });
+    } else if (!user[providerField]) {
+      // Existing email-based user — link provider
+      user[providerField] = profile.providerId;
+      if (!user.image && profile.picture) user.image = profile.picture;
+      await user.save();
+    }
+
+    const token = generateToken(user);
+
+    res.json({
+      token,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone || "",
+        role: user.role,
+        verified: user.verified,
+        image: user.image || null,
+      },
+    });
+  } catch (err) {
+    console.error("Social auth failed:", err?.response?.data || err.message);
+    res.status(500).json({ message: "Social sign-in failed" });
   }
 });
 

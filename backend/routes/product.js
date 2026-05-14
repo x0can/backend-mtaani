@@ -48,6 +48,7 @@ router.get("/api/products/home", authMiddleware, async (req, res) => {
       category: 1,
       priceUpdatedAt: 1,
       stock: 1,
+      likeCount: 1,
       createdAt: 1,
     };
 

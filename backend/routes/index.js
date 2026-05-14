@@ -13,5 +13,6 @@ router.use(require("./payment"));
 router.use(require("./presence"));
 router.use(require("./adminStats"));
 router.use(require("./mpesaTest"))
+router.use(require("./social"));
 
 module.exports = router;

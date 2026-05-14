@@ -8,7 +8,10 @@ const UserSchema = new mongoose.Schema(
     email: { type: String, required: true, unique: true, lowercase: true },
     passwordHash: { type: String, required: true },
     isAdmin: { type: Boolean, default: false },
-    phone: { type: String, required: true },
+    phone: { type: String, default: "" },
+
+    googleId: { type: String, default: null, sparse: true },
+    facebookId: { type: String, default: null, sparse: true },
 
     // ⭐ ADD THIS
     image: { type: String, default: null },
@@ -50,6 +53,7 @@ const UserSchema = new mongoose.Schema(
     },
 
     assignedOrders: [{ type: mongoose.Schema.Types.ObjectId, ref: "Order" }],
+    categoryPreferences: [{ type: mongoose.Schema.Types.ObjectId, ref: "ProductCategory" }],
   },
   { timestamps: true }
 );
@@ -114,6 +118,7 @@ const ProductSchema = new mongoose.Schema(
     quickPickOrder: { type: Number, default: null },
 
     isActive: { type: Boolean, default: true },
+    likeCount: { type: Number, default: 0 },
 
     isFlashDeal: { type: Boolean, default: false },
     flashDealOrder: { type: Number, default: null },
@@ -191,7 +196,7 @@ const ProductInteractionSchema = new mongoose.Schema(
 
     type: {
       type: String,
-      enum: ["view", "add_to_cart", "order", "search_click"],
+      enum: ["view", "add_to_cart", "order", "search_click", "like"],
       required: true,
     },
 

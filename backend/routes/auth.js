@@ -206,6 +206,44 @@ router.post("/api/auth/social", async (req, res) => {
 router.post("/api/auth/resend-code", authMiddleware, sendPhoneOtp);
 router.post("/api/auth/verify-phone", authMiddleware, verifyPhoneOtp);
 
+/* -----------------------------------------------------------------------
+   FIREBASE PHONE VERIFICATION  –  POST /api/auth/verify-phone-firebase
+   Body: { firebaseToken: string }
+   Client completes Firebase phone auth, sends the resulting ID token here.
+   We verify it with Firebase Admin, confirm the phone matches, mark verified.
+----------------------------------------------------------------------- */
+router.post("/api/auth/verify-phone-firebase", authMiddleware, async (req, res) => {
+  try {
+    const { firebaseToken } = req.body;
+    if (!firebaseToken) {
+      return res.status(400).json({ message: "firebaseToken required" });
+    }
+
+    const admin = require("../firebaseAdmin");
+    const decoded = await admin.auth().verifyIdToken(firebaseToken);
+
+    // Firebase phone auth tokens carry the verified phone number
+    if (decoded.phone_number == null) {
+      return res.status(400).json({ message: "Token does not contain a verified phone number" });
+    }
+
+    await User.findByIdAndUpdate(req.user._id, {
+      verified: true,
+      $unset: {
+        phoneOtpHash: 1,
+        phoneOtpExpiresAt: 1,
+        phoneOtpLastSentAt: 1,
+        phoneOtpAttempts: 1,
+      },
+    });
+
+    res.json({ verified: true });
+  } catch (err) {
+    console.error("Firebase phone verification failed:", err?.message);
+    res.status(400).json({ message: "Phone verification failed. Please try again." });
+  }
+});
+
 router.post("/api/auth/send-email-otp", authMiddleware, sendEmailOtp);
 router.post("/api/auth/verify-email-otp", authMiddleware, verifyEmailOtp);
 

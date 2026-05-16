@@ -166,14 +166,14 @@ router.post("/api/auth/social", async (req, res) => {
       (await User.findOne({ email: profile.email }));
 
     if (!user) {
-      // New user — social login counts as verified
+      // New user — phone must still be verified before access is granted
       user = await User.create({
         name: profile.name,
         email: profile.email,
         phone: "",
         [providerField]: profile.providerId,
         passwordHash: await hashPassword(require("crypto").randomBytes(32).toString("hex")),
-        verified: true,
+        verified: false,
         image: profile.picture || null,
       });
     } else if (!user[providerField]) {
@@ -282,6 +282,7 @@ router.put("/api/me", authMiddleware, async (req, res) => {
     if (typeof req.body.phone !== "undefined") req.user.phone = req.body.phone;
 
     await req.user.save();
+    await delCache(`auth:${req.user._id}`);
     res.json(req.user);
   } catch (err) {
     console.error("Profile update failed:", err);

@@ -432,6 +432,7 @@ router.get("/api/products", async (req, res) => {
       featured,
       flash,
       inStock,
+      hasImages,
       active = "true",
     } = req.query;
 
@@ -442,6 +443,8 @@ router.get("/api/products", async (req, res) => {
     if (featured === "true") query.featured = true;
     if (flash === "true") query.isFlashDeal = true;
     if (category) query.category = category;
+    if (hasImages === "true") query["images.0"] = { $exists: true };
+    if (hasImages === "false") query["images.0"] = { $exists: false };
 
     if (search) {
       query.$or = [{ title: { $regex: search, $options: "i" } }];
@@ -455,6 +458,7 @@ router.get("/api/products", async (req, res) => {
       featured,
       flash,
       inStock,
+      hasImages,
       active,
       sort: req.query.sort,
     })}`;

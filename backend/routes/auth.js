@@ -26,7 +26,7 @@ router.post(
   kenyanPhoneCheck,
   async (req, res) => {
     try {
-      const { name, email, password, phone, role } = req.body;
+      const { name, email, password, phone, role, firebaseToken } = req.body;
 
       if (!name || !email || !password || !phone) {
         return res.status(400).json({ message: "Missing fields" });
@@ -39,6 +39,16 @@ router.post(
 
       const passwordHash = await hashPassword(password);
 
+      // If a valid Firebase phone token is provided, create as verified immediately
+      let verified = false;
+      if (firebaseToken) {
+        try {
+          const admin = require("../firebaseAdmin");
+          const decoded = await admin.auth().verifyIdToken(firebaseToken);
+          verified = Boolean(decoded.phone_number);
+        } catch { /* create as unverified, they can verify later */ }
+      }
+
       const user = await User.create({
         name,
         email,
@@ -46,6 +56,7 @@ router.post(
         passwordHash,
         isAdmin: false,
         role: role === "rider" ? "rider" : "customer",
+        verified,
       });
 
       const token = generateToken(user);
@@ -114,7 +125,7 @@ router.post("/api/auth/login", async (req, res) => {
 ----------------------------------------------------------------------- */
 router.post("/api/auth/social", async (req, res) => {
   try {
-    const { provider, accessToken, idToken } = req.body;
+    const { provider, accessToken, idToken, phone, firebaseToken } = req.body;
 
     if (!provider || (!accessToken && !idToken)) {
       return res.status(400).json({ message: "provider and accessToken or idToken required" });
@@ -123,16 +134,13 @@ router.post("/api/auth/social", async (req, res) => {
     let profile = null;
 
     if (provider === "google") {
-      const idToken = req.body.idToken;
       if (idToken) {
-        // Native sign-in sends an ID token — verify via Google's tokeninfo endpoint
         const { data } = await axios.get(
           `https://oauth2.googleapis.com/tokeninfo?id_token=${idToken}`
         );
         if (!data.sub) return res.status(400).json({ message: "Invalid Google ID token" });
         profile = { providerId: data.sub, email: data.email, name: data.name, picture: data.picture };
       } else {
-        // Fallback: access_token (browser-based flow)
         const { data } = await axios.get(
           "https://www.googleapis.com/userinfo/v2/me",
           { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -143,7 +151,6 @@ router.post("/api/auth/social", async (req, res) => {
       const { data } = await axios.get(
         `https://graph.facebook.com/me?fields=id,name,email,picture.type(large)&access_token=${accessToken}`
       );
-      // { id, email, name, picture: { data: { url } } }
       profile = {
         providerId: data.id,
         email: data.email,
@@ -160,26 +167,66 @@ router.post("/api/auth/social", async (req, res) => {
 
     const providerField = provider === "google" ? "googleId" : "facebookId";
 
-    // Find by provider ID first, then email fallback
     let user =
       (await User.findOne({ [providerField]: profile.providerId })) ||
       (await User.findOne({ email: profile.email }));
 
     if (!user) {
-      // New user — phone must still be verified before access is granted
+      // New user — require phone + Firebase OTP before creating account
+      if (!phone || !firebaseToken) {
+        return res.json({
+          status: "needs_verification",
+          profile: { name: profile.name, email: profile.email, picture: profile.picture },
+        });
+      }
+
+      // Verify the Firebase phone token
+      try {
+        const admin = require("../firebaseAdmin");
+        const decoded = await admin.auth().verifyIdToken(firebaseToken);
+        if (!decoded.phone_number) throw new Error("No phone in token");
+      } catch {
+        return res.status(400).json({ message: "Phone verification failed. Please try again." });
+      }
+
       user = await User.create({
         name: profile.name,
         email: profile.email,
-        phone: "",
+        phone,
         [providerField]: profile.providerId,
         passwordHash: await hashPassword(require("crypto").randomBytes(32).toString("hex")),
-        verified: false,
+        verified: true,
         image: profile.picture || null,
       });
-    } else if (!user[providerField]) {
-      // Existing email-based user — link provider
-      user[providerField] = profile.providerId;
-      if (!user.image && profile.picture) user.image = profile.picture;
+
+    } else {
+      // Existing user
+      if (!user[providerField]) {
+        user[providerField] = profile.providerId;
+        if (!user.image && profile.picture) user.image = profile.picture;
+      }
+
+      // If unverified and they're completing phone verification now, mark them verified
+      if (!user.verified && phone && firebaseToken) {
+        try {
+          const admin = require("../firebaseAdmin");
+          const decoded = await admin.auth().verifyIdToken(firebaseToken);
+          if (decoded.phone_number) {
+            user.phone = phone;
+            user.verified = true;
+          }
+        } catch { /* leave as unverified */ }
+      }
+
+      // Unverified existing user without firebaseToken: ask them to verify phone
+      if (!user.verified) {
+        await user.save();
+        return res.json({
+          status: "needs_verification",
+          profile: { name: user.name, email: user.email, picture: user.image },
+        });
+      }
+
       await user.save();
     }
 

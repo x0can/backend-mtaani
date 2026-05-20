@@ -14,5 +14,12 @@ router.use(require("./presence"));
 router.use(require("./adminStats"));
 router.use(require("./mpesaTest"))
 router.use(require("./social"));
+router.use(require("./pos"));
+router.use(require("./inventory"));
+router.use(require("./shifts"));
+router.use(require("./suppliers"));
+router.use(require("./discounts"));
+router.use(require("./reports"));
+router.use(require("./customers"));
 
 module.exports = router;

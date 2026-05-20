@@ -145,6 +145,9 @@ const ProductSchema = new mongoose.Schema(
       lastImported: Date,
       importSource: { type: String, default: "excel" },
     },
+
+    barcode: { type: String, sparse: true, index: true },
+    sku: { type: String, sparse: true, index: true },
   },
   { timestamps: true }
 );
@@ -319,6 +322,192 @@ const AdminRecommendation = mongoose.model(
   AdminRecommendationSchema
 );
 
+/* ---- Walk-in Customer ---- */
+const WalkInCustomerSchema = new mongoose.Schema(
+  {
+    name: String,
+    phone: { type: String, index: true },
+    email: String,
+    loyaltyPoints: { type: Number, default: 0 },
+    totalSpent: { type: Number, default: 0 },
+    visitCount: { type: Number, default: 0 },
+    lastVisit: Date,
+  },
+  { timestamps: true }
+);
+
+/* ---- Shift ---- */
+const ShiftSchema = new mongoose.Schema(
+  {
+    cashier: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    openedAt: { type: Date, default: Date.now },
+    closedAt: Date,
+    openingFloat: { type: Number, default: 0 },
+    closingFloat: { type: Number, default: null },
+    expectedFloat: Number,
+    cashDrops: [
+      {
+        amount: Number,
+        note: String,
+        at: { type: Date, default: Date.now },
+      },
+    ],
+    status: { type: String, enum: ["open", "closed"], default: "open" },
+    summary: {
+      totalSales: { type: Number, default: 0 },
+      totalCash: { type: Number, default: 0 },
+      totalMpesa: { type: Number, default: 0 },
+      totalCard: { type: Number, default: 0 },
+      transactionCount: { type: Number, default: 0 },
+    },
+  },
+  { timestamps: true }
+);
+
+/* ---- POS Sale ---- */
+const POSSaleItemSchema = new mongoose.Schema({
+  product: { type: mongoose.Schema.Types.ObjectId, ref: "Product", required: true },
+  title: String, // snapshot
+  barcode: String, // snapshot
+  quantity: { type: Number, required: true, min: 1 },
+  unitPrice: { type: Number, required: true },
+  discountAmount: { type: Number, default: 0 },
+  lineTotal: Number,
+});
+
+const PaymentEntrySchema = new mongoose.Schema({
+  method: { type: String, enum: ["cash", "mpesa", "card"], required: true },
+  amount: { type: Number, required: true },
+  reference: String, // e.g. M-Pesa receipt
+});
+
+const POSSaleSchema = new mongoose.Schema(
+  {
+    saleNumber: { type: String, unique: true },
+    cashier: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    shift: { type: mongoose.Schema.Types.ObjectId, ref: "Shift" },
+    customer: { type: mongoose.Schema.Types.ObjectId, ref: "WalkInCustomer" },
+    items: [POSSaleItemSchema],
+    subtotal: { type: Number, required: true },
+    discountAmount: { type: Number, default: 0 },
+    taxAmount: { type: Number, default: 0 },
+    total: { type: Number, required: true },
+    payments: [PaymentEntrySchema],
+    change: { type: Number, default: 0 },
+    paymentMethod: {
+      type: String,
+      enum: ["cash", "mpesa", "card", "split"],
+      required: true,
+    },
+    status: {
+      type: String,
+      enum: ["completed", "voided", "refunded"],
+      default: "completed",
+    },
+    voidReason: String,
+    refundReason: String,
+    loyaltyPointsEarned: { type: Number, default: 0 },
+    loyaltyPointsRedeemed: { type: Number, default: 0 },
+  },
+  { timestamps: true }
+);
+
+POSSaleSchema.index({ cashier: 1 });
+POSSaleSchema.index({ shift: 1 });
+POSSaleSchema.index({ status: 1 });
+POSSaleSchema.index({ createdAt: 1 });
+
+/* ---- Inventory Transaction ---- */
+const InventoryTransactionSchema = new mongoose.Schema(
+  {
+    product: { type: mongoose.Schema.Types.ObjectId, ref: "Product", required: true },
+    type: {
+      type: String,
+      enum: ["restock", "sale", "pos_sale", "adjustment", "return", "waste", "transfer"],
+      required: true,
+    },
+    quantity: { type: Number, required: true }, // positive = in, negative = out
+    previousStock: Number,
+    newStock: Number,
+    unitCost: Number,
+    reference: String, // PO number, sale number, etc.
+    note: String,
+    performedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+  },
+  { timestamps: true }
+);
+
+InventoryTransactionSchema.index({ product: 1 });
+InventoryTransactionSchema.index({ type: 1 });
+InventoryTransactionSchema.index({ createdAt: 1 });
+
+/* ---- Supplier ---- */
+const SupplierSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true },
+    contactName: String,
+    phone: String,
+    email: String,
+    address: String,
+    taxId: String,
+    paymentTerms: { type: String, default: "Net 30" },
+    active: { type: Boolean, default: true },
+    notes: String,
+  },
+  { timestamps: true }
+);
+
+/* ---- Purchase Order ---- */
+const POLineItemSchema = new mongoose.Schema({
+  product: { type: mongoose.Schema.Types.ObjectId, ref: "Product" },
+  productName: String, // snapshot
+  quantity: { type: Number, required: true },
+  receivedQuantity: { type: Number, default: 0 },
+  unitCost: { type: Number, required: true },
+  lineTotal: Number,
+});
+
+const PurchaseOrderSchema = new mongoose.Schema(
+  {
+    poNumber: { type: String, unique: true },
+    supplier: { type: mongoose.Schema.Types.ObjectId, ref: "Supplier", required: true },
+    items: [POLineItemSchema],
+    status: {
+      type: String,
+      enum: ["draft", "sent", "partial", "received", "cancelled"],
+      default: "draft",
+    },
+    orderedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    receivedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    orderedAt: Date,
+    receivedAt: Date,
+    expectedAt: Date,
+    notes: String,
+    totalCost: { type: Number, default: 0 },
+  },
+  { timestamps: true }
+);
+
+/* ---- Discount ---- */
+const DiscountSchema = new mongoose.Schema(
+  {
+    name: { type: String, required: true },
+    code: { type: String, uppercase: true, sparse: true, unique: true },
+    type: { type: String, enum: ["percentage", "fixed", "bogo"], required: true },
+    value: { type: Number, required: true }, // % or KES
+    minOrderAmount: { type: Number, default: 0 },
+    maxUses: Number,
+    usedCount: { type: Number, default: 0 },
+    applicableProducts: [{ type: mongoose.Schema.Types.ObjectId, ref: "Product" }],
+    applicableCategories: [{ type: mongoose.Schema.Types.ObjectId, ref: "ProductCategory" }],
+    startAt: Date,
+    endAt: Date,
+    active: { type: Boolean, default: true },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+  },
+  { timestamps: true }
+);
+
 /* ---- Models ---- */
 const User = mongoose.model("User", UserSchema);
 const Product = mongoose.model("Product", ProductSchema);
@@ -333,6 +522,14 @@ const ProductEventLog = mongoose.model(
   ProductEventLogSchema
 );
 
+const WalkInCustomer = mongoose.model("WalkInCustomer", WalkInCustomerSchema);
+const Shift = mongoose.model("Shift", ShiftSchema);
+const POSSale = mongoose.model("POSSale", POSSaleSchema);
+const InventoryTransaction = mongoose.model("InventoryTransaction", InventoryTransactionSchema);
+const Supplier = mongoose.model("Supplier", SupplierSchema);
+const PurchaseOrder = mongoose.model("PurchaseOrder", PurchaseOrderSchema);
+const Discount = mongoose.model("Discount", DiscountSchema);
+
 module.exports = {
   User,
   Product,
@@ -342,4 +539,11 @@ module.exports = {
   ProductInteraction,
   SearchHistory,
   AdminRecommendation,
+  POSSale,
+  Shift,
+  InventoryTransaction,
+  Supplier,
+  PurchaseOrder,
+  Discount,
+  WalkInCustomer,
 };
